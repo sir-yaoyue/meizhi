@@ -1,0 +1,25 @@
+[Unit]
+Description=Kaishi H3 video generation gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/data/kaishi_h3/backend
+Environment=KAISHI_BASE_DIR=/data/kaishi_h3
+Environment=VLLM_OMNI_URL=http://127.0.0.1:8000
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/data/kaishi_h3/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8010 --workers 1
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=false
+ProtectSystem=full
+ReadWritePaths=/data/kaishi_h3/data /data/kaishi_h3/videos /data/kaishi_h3/logs
+
+[Install]
+WantedBy=multi-user.target
+

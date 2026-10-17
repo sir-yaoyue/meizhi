@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime data (created at runtime, not source)
+data/
+videos/
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local diagnostics
+acl-recovery/

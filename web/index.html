@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="美超 AI 图像与视频创作平台，支持 MiniMax H3 和 Qwen-Image-2.1" />
+    <title>美超智影 · AI 视频创作平台</title>
+    <script>
+      (function () {
+        var theme = "dark";
+        try {
+          var saved = localStorage.getItem("kaishi_theme");
+          if (saved === "light" || saved === "dark") theme = saved;
+        } catch (e) {}
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+    <link rel="stylesheet" href="/vendor/filepond/filepond.min.css?v=4.32.12" />
+    <link rel="stylesheet" href="/vendor/filepond/filepond-plugin-image-preview.min.css?v=4.6.12" />
+    <link rel="stylesheet" href="/vendor/bootstrap/bootstrap.min.css?v=5.3.8" />
+    <link rel="stylesheet" href="/vendor/tom-select/tom-select.min.css?v=2.4.3" />
+    <link rel="stylesheet" href="/styles.css?v=20261016-pw-toggle" />
+  </head>
+  <body>
+    <section class="login-screen" id="loginScreen">
+      <button class="theme-toggle-floating" id="themeToggleLogin" type="button" aria-label="切换深浅主题">☀ 浅色</button>
+      <form class="login-card panel" id="loginForm">
+        <img src="/brand-logo.png" alt="美超" />
+        <p class="eyebrow"><span></span> MEICHAO AI VIDEO</p>
+        <h1>登录创作平台</h1>
+        <p>使用管理员分配的账号进入。每位用户只能查看和下载自己的任务。</p>
+        <label class="field"><span>用户名</span><input id="loginUsername" autocomplete="username" required /></label>
+        <label class="field"><span>密码</span>
+          <div class="input-with-toggle">
+            <input id="loginPassword" type="password" autocomplete="current-password" required />
+            <button type="button" class="password-toggle" data-target="loginPassword" aria-label="显示密码"></button>
+          </div>
+        </label>
+        <div class="login-error" id="loginError" hidden></div>
+        <button class="primary-button" type="submit"><span>登录</span><span>→</span></button>
+      </form>
+    </section>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="美超智影首页">
+        <span class="brand-mark"><img src="/brand-logo.png" alt="美超" /></span>
+        <span class="brand-copy">
+          <strong>美超智影</strong>
+          <small>MEICHAO AI VIDEO</small>
+        </span>
+      </a>
+      <div class="topbar-actions" id="userControls" hidden>
+        <div class="service-state" id="serviceState">
+          <span class="state-dot"></span>
+          <span>正在连接推理服务</span>
+        </div>
+        <span class="user-badge" id="userBadge"></span>
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换深浅主题">☀ 浅色</button>
+        <button class="text-button" id="apiKeyButton" type="button">API 密钥</button>
+        <button class="text-button" id="logoutButton" type="button">退出</button>
+      </div>
+    </header>
+
+    <main class="shell" id="appShell" hidden>
+      <section class="queue-summary" aria-label="任务排队情况">
+        <div class="queue-stat"><small>全站运行</small><strong id="queueRunningCount">—</strong></div>
+        <div class="queue-stat"><small>等待队列</small><strong id="queueWaitingCount">—</strong></div>
+        <div class="queue-own" id="queueOwnStatus">正在读取我的任务</div>
+        <div class="live-job-chips" id="liveJobChips" hidden aria-label="我的在途任务"></div>
+      </section>
+      <section class="intro" id="introSection">
+        <div class="intro-copy-wrap">
+          <p class="eyebrow"><span></span> MINIMAX H3 · QWEN IMAGE</p>
+          <h1>让每一个画面，<br /><em>动起来。</em></h1>
+          <p class="intro-copy">
+            用 MiniMax H3 创作音视频，用 Qwen-Image-2.1 生成和编辑图片。描述你的灵感，查看生成进度，预览并下载作品。
+          </p>
+          <div class="feature-tags" aria-label="平台特性">
+            <span>中文提示词</span><span>图像与视频创作</span><span>多图参考编辑</span><span>高清输出</span>
+          </div>
+        </div>
+        <div class="hero-emblem" aria-hidden="true">
+          <span class="emblem-glow"></span>
+          <img src="/brand-logo.png" alt="" />
+          <small>CREATE WITHOUT LIMITS</small>
+        </div>
+        <button class="intro-toggle" id="introToggle" type="button" aria-expanded="true">收起简介 ▲</button>
+      </section>
+      <div class="intro-collapsed-bar" id="introCollapsedBar" hidden>
+        <strong>美超智影</strong>
+        <span>让每一个画面，<em>动起来。</em> 选择创作模式开始。</span>
+        <button id="introExpand" type="button">展开简介 ▼</button>
+      </div>
+
+      <section class="admin-panel panel" id="adminPanel" hidden>
+        <div>
+          <span class="step-label">ADMIN</span>
+          <h2>用户管理</h2>
+          <p>新增账号后即可登录使用；任务、进度和下载权限按用户隔离。</p>
+        </div>
+        <form class="admin-user-form" id="adminUserForm">
+          <label class="field"><span>用户名</span><input name="username" minlength="3" maxlength="32" required /></label>
+          <label class="field"><span>初始密码</span>
+            <div class="input-with-toggle">
+              <input name="password" id="adminPasswordInput" type="password" minlength="8" required />
+              <button type="button" class="password-toggle" data-target="adminPasswordInput" aria-label="显示密码"></button>
+            </div>
+          </label>
+          <label class="field"><span>角色</span><select name="role"><option value="user">普通用户</option><option value="admin">管理员</option></select></label>
+          <button class="primary-button" type="submit"><span>创建用户</span><span>＋</span></button>
+        </form>
+        <div class="user-list" id="userList"></div>
+      </section>
+
+      <div class="mode-heading">
+        <div><span class="step-label">WORKFLOW</span><h2>选择创作模式</h2></div>
+        <p>切换模式不会清空提示词和通用参数；切换参考模式时会重置已选素材。</p>
+      </div>
+      <nav class="mode-selector" aria-label="创作模型">
+        <button class="mode-card active" type="button" data-mode="t2va" aria-pressed="true"><small>01</small><strong>T2VA 文生音视频</strong><span>文字生成带声音的视频</span><i class="mode-service unknown" data-service="t2va" title="状态检查中"><b class="mode-service-dot"></b><em>检查中</em></i></button>
+        <button class="mode-card" type="button" data-mode="fl2va" aria-pressed="false"><small>02</small><strong>FL2VA 关键帧生音视频</strong><span>支持首帧、尾帧或首尾帧</span><i class="mode-service unknown" data-service="fl2va" title="状态检查中"><b class="mode-service-dot"></b><em>检查中</em></i></button>
+        <button class="mode-card" type="button" data-mode="ref2va" aria-pressed="false"><small>03</small><strong>Ref2VA 多参考音视频</strong><span>图片、视频和音频联合控制</span><i class="mode-service unknown" data-service="ref2va" title="状态检查中"><b class="mode-service-dot"></b><em>检查中</em></i></button>
+        <button class="mode-card" type="button" data-mode="qwen_image" aria-pressed="false"><small>04</small><strong>Qwen 图像创作</strong><span>文字生图 · 最多四张参考图编辑</span><i class="mode-service unknown" data-service="qwen_image" title="状态检查中"><b class="mode-service-dot"></b><em>检查中</em></i></button>
+        <button class="mode-card" type="button" data-mode="z_image" aria-pressed="false"><small>05</small><strong>造相 Z-Image</strong><span>未蒸馏版 · 文生图与单图重绘</span><i class="mode-service unknown" data-service="z_image" title="状态检查中"><b class="mode-service-dot"></b><em>检查中</em></i></button>
+      </nav>
+
+      <section class="workspace">
+        <div class="creator-stack">
+        <form class="composer panel" id="generationForm">
+          <input type="hidden" id="taskType" name="task_type" value="t2va" />
+          <div class="panel-heading">
+            <div>
+              <span class="step-label">01</span>
+              <h2>创作参数</h2>
+            </div>
+            <span class="required-note">提示词为必填项</span>
+          </div>
+
+          <section class="reference-uploader" id="uploadZone">
+            <div class="fl2va-frame-mode" id="fl2vaFrameMode" hidden>
+              <label class="field">
+                <span>关键帧方式</span>
+                <select id="frameModeInput" name="frame_mode">
+                  <option value="first">首帧</option>
+                  <option value="last">尾帧</option>
+                  <option value="first_last">首帧 + 尾帧</option>
+                </select>
+                <small class="field-hint">首尾帧模式请按“首帧、尾帧”顺序上传两张图片，可拖拽调整顺序。</small>
+              </label>
+            </div>
+
+            <div class="media-uploader" id="imageUploadGroup">
+              <div class="media-uploader-heading"><strong>参考图片</strong><small id="imageUploadLimit">JPG / PNG / WebP / HEIC，单张不超过 30MB</small></div>
+              <input id="referenceInput" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" />
+              <ol class="reference-map" id="referenceMap"></ol>
+            </div>
+
+            <div class="media-uploader" id="videoUploadGroup" hidden>
+              <div class="media-uploader-heading"><strong>参考视频</strong><small>MP4 / MOV，单个 2–15 秒、≤50MB，最多 3 个且总时长 ≤15 秒</small></div>
+              <input id="videoReferenceInput" type="file" accept="video/mp4,video/quicktime" />
+              <ol class="reference-map" id="videoReferenceMap"></ol>
+            </div>
+
+            <div class="media-uploader" id="audioUploadGroup" hidden>
+              <div class="media-uploader-heading"><strong>参考音频</strong><small>WAV / MP3，单个 2–15 秒、≤15MB，最多 3 个且总时长 ≤15 秒；不能仅传音频</small></div>
+              <input id="audioReferenceInput" type="file" accept="audio/wav,audio/x-wav,audio/mpeg" />
+              <ol class="reference-map" id="audioReferenceMap"></ol>
+            </div>
+
+            <div class="reference-guide" id="referenceGuide">
+              <strong id="referenceGuideTitle">参考素材与提示词定位</strong>
+              <p id="referenceGuideText">模型会分别按顺序识别为图片1、视频1、音频1；点击素材旁的按钮可插入提示词。</p>
+            </div>
+          </section>
+
+          <label class="field prompt-field">
+            <span>提示词</span>
+            <textarea
+              id="promptInput"
+              name="prompt"
+              rows="5"
+              maxlength="4000"
+              placeholder="例如：清晨的雪山之巅，一位登山者迎着金色日光缓慢前行，电影感运镜，风吹动衣角……"
+              required
+            ></textarea>
+            <span class="field-meta-row">
+              <small class="field-hint" id="promptReferenceHint">Ref2VA 示例：“保持图片1的人物，参考视频1的动作，并采用音频1的声音”；各类编号对应上方当前排序。</small>
+              <small class="prompt-counter" id="promptCounter">0 / 4000</small>
+            </span>
+          </label>
+
+          <div class="field-grid two">
+            <label class="field">
+              <span>时长（秒）</span>
+              <input id="secondsInput" name="seconds" type="number" min="4" max="15" step="0.1" value="4" inputmode="decimal" aria-describedby="secondsHint" />
+              <small class="field-hint" id="secondsHint">仅支持 4–15 秒</small>
+            </label>
+            <label class="field">
+              <span>随机种子</span>
+              <input name="seed" type="number" step="1" placeholder="随机" />
+            </label>
+          </div>
+
+          <div class="field-grid two">
+            <label class="field">
+              <span>输出尺寸</span>
+              <select
+                id="sizeInput"
+                name="size"
+                data-component="combobox"
+                placeholder="输入尺寸或选择官方推荐尺寸"
+              >
+                <option value=""></option>
+                <option value="2560x1440">2560×1440 · 2K 横屏 16:9</option>
+                <option value="1344x768">1344x768 · 16:9 横屏（官方推荐）</option>
+                <option value="768x1344">768x1344 · 9:16 竖屏（官方推荐）</option>
+                <option value="1024x768">1024x768 · 4:3 横屏（官方推荐）</option>
+                <option value="768x1024">768x1024 · 3:4 竖屏（官方推荐）</option>
+                <option value="768x768">768x768 · 1:1 方形（官方推荐）</option>
+                <option value="1792x768">1792x768 · 21:9 超宽屏（官方推荐）</option>
+              </select>
+              <small class="field-hint">填写后直接控制宽高；留空时 T2VA/Ref2VA 默认 16:9，FL2VA 按参考图比例自适应</small>
+            </label>
+          </div>
+
+          <details class="advanced">
+            <summary>
+              <span>高级参数</span>
+              <small>可选，不填写时使用模型默认值</small>
+            </summary>
+            <div class="advanced-body">
+              <div class="field-grid three">
+                <label class="field"><span>自适应短边</span><input id="videoShortEdge" name="short_edge" type="number" min="768" max="768" value="768" readonly /><small id="videoShortEdgeHint" class="field-hint">自适应尺寸使用 768；指定输出尺寸时不传此参数。</small></label>
+                <label class="field"><span>帧数</span><input name="num_frames" type="number" /></label>
+                <label class="field"><span>FPS</span><input name="fps" type="number" /></label>
+                <label class="field"><span>输出数量</span><input name="num_outputs_per_prompt" type="number" min="1" max="10" value="1" /></label>
+                <label class="field"><span>推理步数</span><input name="num_inference_steps" type="number" min="1" step="1" value="50" /><small class="field-hint">留空仍按 50 步提交。</small></label>
+                <label class="field"><span>Guidance scale</span><input name="guidance_scale" type="number" step="any" /></label>
+                <label class="field"><span>Guidance scale 2</span><input name="guidance_scale_2" type="number" step="any" /></label>
+                <label class="field"><span>True CFG scale</span><input name="true_cfg_scale" type="number" step="any" /></label>
+                <label class="field"><span>Boundary ratio</span><input name="boundary_ratio" type="number" step="any" /></label>
+                <label class="field"><span>Flow shift</span><input name="flow_shift" type="number" step="any" /></label>
+                <label class="field"><span>声音时长</span><input name="sound_duration" type="number" min="0" step="any" /></label>
+                <label class="field"><span>参考起始秒数</span><input name="start_time_seconds" type="number" min="0" step="any" /></label>
+                <label class="field"><span>启用补帧</span><select name="enable_frame_interpolation"><option value="">模型默认</option><option value="true">开启</option><option value="false">关闭</option></select></label>
+                <label class="field"><span>补帧指数</span><input name="frame_interpolation_exp" type="number" min="1" /></label>
+                <label class="field"><span>补帧倍率</span><input name="frame_interpolation_scale" type="number" min="0" step="any" /></label>
+              </div>
+              <label class="field"><span>负面提示词</span><textarea name="negative_prompt" rows="3" placeholder="不希望画面中出现的内容"></textarea></label>
+              <div class="field-grid two">
+                <label class="field"><span>补帧模型路径</span><input name="frame_interpolation_model_path" /></label>
+                <label class="field"><span>LoRA</span><input name="lora" /></label>
+              </div>
+              <label class="field"><span>Extra params（字符串）</span><textarea name="extra_params" rows="3" placeholder='例如：{"key":"value"}'></textarea></label>
+            </div>
+          </details>
+
+          <div class="form-footer">
+            <p>视频生成耗时较长，提交后可在右侧查看实时状态。</p>
+            <button class="primary-button" id="submitButton" type="submit">
+              <span>立即生成视频</span><span aria-hidden="true">→</span>
+            </button>
+          </div>
+        </form>
+
+        <form class="composer panel" id="imageGenerationForm" hidden>
+          <div class="panel-heading">
+            <div><span class="step-label">QWEN-IMAGE-2.1</span><h2>图像创作参数</h2></div>
+            <span class="required-note" id="qwenServiceState">正在检查服务</span>
+          </div>
+          <label class="field">
+            <span>创作方式</span>
+            <select id="qwenMode" name="mode">
+              <option value="generate">文生图 · 从文字生成图片</option>
+              <option value="edit" selected>参考图编辑 · 修改或融合图片</option>
+            </select>
+          </label>
+          <section class="reference-uploader" id="qwenReferenceGroup" hidden>
+            <div class="media-uploader-heading"><strong>参考图片</strong><small>PNG / JPG / WebP，最多 4 张，单张不超过 30MB</small></div>
+            <input id="qwenReferenceInput" type="file" accept="image/png,image/jpeg,image/webp" multiple />
+            <ol class="reference-map" id="qwenReferenceMap"></ol>
+            <p class="field-hint">拖拽调整顺序。提示词可写“将第1张图片的人物放入第2张图片的场景”；编号对应当前上传顺序。</p>
+          </section>
+          <label class="field prompt-field">
+            <span>提示词</span>
+            <textarea id="qwenPrompt" name="prompt" rows="7" maxlength="4000" required></textarea>
+            <span class="field-meta-row">
+              <small class="field-hint">编辑模式可用“第1张图片”“第2张图片”指代上方上传的参考图</small>
+              <small class="prompt-counter" id="qwenPromptCounter">0 / 4000</small>
+            </span>
+          </label>
+          <div class="field-grid two">
+            <label class="field"><span>输出尺寸</span>
+              <select id="qwenSize" name="size" data-component="combobox">
+                <option value="1024x1024">1024×1024 · 方形 1:1</option>
+                <option value="1344x768">1344×768 · 横屏</option>
+                <option value="768x1344">768×1344 · 竖屏</option>
+                <option value="1536x1024">1536×1024 · 横向 3:2</option>
+                <option value="1024x1536">1024×1536 · 纵向 2:3</option>
+                <option value="2048x2048" selected>2048×2048 · 高分辨率方形</option>
+              </select>
+              <small class="field-hint">可输入自定义尺寸；宽高须为 256–4096 之间的 32 的整数倍。大尺寸和多图会增加显存与耗时。</small>
+            </label>
+            <label class="field"><span>图片数量</span><input name="n" type="number" min="1" max="10" step="1" value="1" required /></label>
+          </div>
+          <div class="field-grid three">
+            <label class="field"><span>输出格式</span><select name="output_format"><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WebP</option></select></label>
+            <label class="field"><span>推理步数</span><input name="num_inference_steps" type="number" min="1" max="200" step="1" value="200" required /></label>
+            <label class="field"><span>随机种子</span><input name="seed" type="number" min="0" max="9007199254740991" step="1" placeholder="留空随机" /></label>
+          </div>
+          <details class="advanced">
+            <summary><span>高级参数</span><small>负面提示词、引导强度与输出编码</small></summary>
+            <div class="advanced-body">
+              <label class="field"><span>负面提示词</span><textarea name="negative_prompt" rows="3" maxlength="4000" placeholder="可选，例如：模糊、文字错误、过度曝光"></textarea><small class="field-hint">使用负面提示词时，True CFG 必须大于 1；不使用时保留默认 1。</small></label>
+              <div class="field-grid two">
+                <label class="field"><span>True CFG 引导强度</span><input name="true_cfg_scale" type="number" min="0" max="20" step="0.1" value="1" /><small class="field-hint">默认 1；大于 1 时需填写负面提示词，计算量和显存占用也会增加。</small></label>
+                <label class="field"><span>输出编码参数（0–100）</span><input name="output_compression" type="number" min="0" max="100" step="1" value="100" /><small class="field-hint">JPEG / WebP：编码质量；PNG：100 编码最快，较小值压缩更强。不是模型画质档位。</small></label>
+              </div>
+              <p class="field-hint">需要透明图片时，请在提示词中说明，并选择 PNG 或 WebP；JPEG 不保留透明通道。</p>
+            </div>
+          </details>
+          <div class="form-footer">
+            <p>图片和视频任务统一排队，生成完成后可预览并下载。</p>
+            <button class="primary-button" id="imageSubmitButton" type="submit"><span>立即生成图片</span><span>→</span></button>
+          </div>
+        </form>
+        <form class="composer panel" id="zImageForm" hidden>
+          <div class="panel-heading">
+            <div><span class="step-label">Z-IMAGE · BASE</span><h2>造相创作参数</h2></div>
+            <span class="required-note" id="zImageServiceState">正在检查服务</span>
+          </div>
+          <label class="field"><span>创作方式</span><select id="zImageMode" name="mode">
+            <option value="generate">文生图 · 从文字生成图片</option>
+            <option value="edit" selected>单图重绘 · 基于一张原图重新生成</option>
+          </select></label>
+          <p class="field-hint">已接入未蒸馏版 Z-Image（8003），推荐 28–50 步、CFG 3–5。单图重绘不等于精确指令编辑，不支持多图融合。</p>
+          <section class="reference-uploader" id="zImageReferenceGroup" hidden>
+            <div class="media-uploader-heading"><strong>重绘原图</strong><small>PNG / JPG / WebP，只支持 1 张，最大 30MB</small></div>
+            <input id="zImageReferenceInput" type="file" accept="image/png,image/jpeg,image/webp" />
+            <button class="text-button reference-preview-button" id="zImagePreviewButton" type="button" disabled>放大预览原图 ↗</button>
+            <label class="field"><span>重绘强度 strength</span><input id="zImageStrength" name="strength" type="number" min="0.01" max="1" step="0.01" value="0.6" disabled /><small class="field-hint">越小越保留原图，越大变化越明显；默认 0.6。强度过低时需增加步数。</small></label>
+            <p class="field-hint">原图会按下方输出尺寸缩放，请尽量保持原图宽高比。提示词请描述希望得到的完整画面。</p>
+          </section>
+          <label class="field prompt-field"><span>提示词</span><textarea id="zImagePrompt" name="prompt" rows="7" maxlength="4000" required></textarea><span class="field-meta-row"><small class="field-hint">重绘模式请描述希望得到的完整画面，原图按输出尺寸缩放</small><small class="prompt-counter" id="zImagePromptCounter">0 / 4000</small></span></label>
+          <div class="field-grid two">
+            <label class="field"><span>输出尺寸</span>
+              <select id="zImageSize" name="size" data-component="combobox">
+                <option value="2560x1440" selected>2560×1440 · 2K 横屏 16:9</option>
+                <option value="1024x1024">1024×1024 · 方形 1:1</option>
+                <option value="1344x768">1344×768 · 横屏</option>
+                <option value="768x1344">768×1344 · 竖屏</option>
+                <option value="1536x1024">1536×1024 · 横向 3:2</option>
+                <option value="1024x1536">1024×1536 · 纵向 2:3</option>
+                <option value="2048x2048">2048×2048 · 高分辨率方形</option>
+              </select>
+              <small class="field-hint">支持自定义宽x高，256–4096 之间的 16 的整数倍；这是网页安全范围，大尺寸增加显存与耗时。</small>
+            </label>
+            <label class="field"><span>图片数量</span><input name="n" type="number" min="1" max="10" step="1" value="1" required /></label>
+          </div>
+          <div class="field-grid three">
+            <label class="field"><span>输出格式</span><select name="output_format"><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WebP</option></select></label>
+            <label class="field"><span>推理步数</span><input name="num_inference_steps" type="number" min="1" max="200" step="1" value="50" required /><small class="field-hint">未蒸馏版推荐 28–50 步，默认 50。</small></label>
+            <label class="field"><span>随机种子</span><input name="seed" type="number" min="0" max="9007199254740991" step="1" placeholder="留空随机" /></label>
+          </div>
+          <details class="advanced">
+            <summary><span>高级参数</span><small>CFG、负面提示词与图片编码</small></summary>
+            <div class="advanced-body">
+              <label class="field"><span>CFG 引导强度</span><input name="guidance_scale" type="number" min="0" max="20" step="0.1" value="4" /><small class="field-hint">未蒸馏版推荐 3–5，默认 4；0 关闭 CFG。更高不一定更好。</small></label>
+              <label class="field"><span>负面提示词（可选）</span><textarea name="negative_prompt" rows="3" maxlength="4000"></textarea><small class="field-hint">描述不希望出现的内容；CFG 为 0 时不使用负面提示词。</small></label>
+              <label class="field"><span>随机数设备</span><select name="generator_device"><option value="">模型默认</option><option value="cuda">CUDA</option><option value="cpu">CPU</option></select><small class="field-hint">对比效果时保持种子、设备、尺寸和参数一致；切换设备可能改变结果。</small></label>
+              <label class="field" id="zImageCompressionGroup" hidden><span>输出编码参数（0–100）</span><input id="zImageCompression" name="output_compression" type="number" min="0" max="100" step="1" value="100" disabled /><small class="field-hint">仅单图重绘接口支持：JPEG/WebP 编码质量，PNG 压缩设置，不是模型画质。</small></label>
+            </div>
+          </details>
+          <div class="form-footer">
+            <p>与现有任务统一排队，完成后可预览并下载。</p>
+            <button class="primary-button" id="zImageSubmitButton" type="submit"><span>立即生成图片</span><span>→</span></button>
+          </div>
+        </form>
+        </div>
+
+        <aside class="results">
+          <section class="panel active-job" id="activeJob">
+            <div class="panel-heading compact">
+              <div>
+                <span class="step-label">02</span>
+                <h2>生成结果</h2>
+              </div>
+            </div>
+            <div class="empty-state" id="emptyState">
+              <div class="empty-orbit"><span></span></div>
+              <strong>等待你的第一个镜头</strong>
+              <p>提交任务后，这里会显示进度、作品预览和下载入口。</p>
+            </div>
+            <div class="job-content" id="jobContent" hidden>
+              <div class="job-meta-row">
+                <span class="status-pill" id="jobStatus">排队中</span>
+                <code id="jobId"></code>
+                <span class="job-elapsed" id="jobElapsed" hidden></span>
+              </div>
+              <div class="progress-track"><span id="progressBar"></span></div>
+              <p class="status-message" id="statusMessage"></p>
+              <div class="runtime-events" id="runtimeEvents" hidden></div>
+              <video id="videoPlayer" controls playsinline hidden></video>
+              <div class="image-gallery" id="imageGallery" hidden></div>
+              <div class="download-box" id="downloadBox" hidden>
+                <span>服务器保存路径</span>
+                <code id="serverPath"></code>
+                <a class="download-button" id="downloadButton" download>下载 MP4</a>
+              </div>
+              <div class="error-box" id="errorBox" hidden></div>
+              <div class="job-actions" id="jobActions" hidden>
+                <button class="ghost-button" id="cancelJobButton" type="button" hidden>取消任务</button>
+                <button class="solid-primary" id="retryJobButton" type="button" hidden>重新提交</button>
+              </div>
+              <button class="danger-button video-delete-button" id="deleteVideoButton" type="button" hidden>删除此视频</button>
+            </div>
+          </section>
+
+          <section class="panel history-panel">
+            <div class="history-heading">
+              <div>
+                <span class="step-label">03</span>
+                <h2>最近任务</h2>
+              </div>
+              <button class="text-button" id="refreshHistory" type="button">刷新</button>
+            </div>
+            <div class="history-list" id="historyList">
+              <p class="history-empty">暂时没有生成记录</p>
+            </div>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <section class="api-key-modal" id="apiKeyModal" hidden>
+      <div class="api-key-card panel" role="dialog" aria-modal="true" aria-labelledby="apiKeyTitle">
+        <div class="panel-heading compact">
+          <div><span class="step-label">COMFYUI</span><h2 id="apiKeyTitle">API 密钥</h2></div>
+          <button class="modal-close" id="apiKeyClose" type="button" aria-label="关闭">×</button>
+        </div>
+        <p>将服务器地址和密钥填写到你工作流所使用的 HTTP/API 调用节点。重新生成后旧密钥立即失效。</p>
+        <label class="field"><span>服务器地址</span><input id="apiServerUrl" readonly /></label>
+        <label class="field"><span>API Key（只显示一次）</span><textarea id="apiKeyValue" rows="3" readonly placeholder="点击下方按钮生成"></textarea></label>
+        <div class="api-key-actions">
+          <button class="primary-button" id="generateApiKey" type="button"><span>生成 / 更新密钥</span><span>↻</span></button>
+          <button class="text-button" id="copyApiKey" type="button">复制密钥</button>
+          <button class="danger-button" id="revokeApiKey" type="button">撤销密钥</button>
+        </div>
+        <a class="comfy-download" href="/api/docs" target="_blank" rel="noopener">查看 API 文档 ↗</a>
+        <small id="apiKeyStatus">尚未检查密钥状态</small>
+      </div>
+    </section>
+
+    <div class="modal-backdrop" id="confirmModal" hidden>
+      <div class="confirm-card panel" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+        <div class="panel-heading compact">
+          <div><span class="step-label">CONFIRM</span><h2 id="confirmTitle">确认操作</h2></div>
+        </div>
+        <p class="confirm-message" id="confirmMessage"></p>
+        <div class="modal-actions">
+          <button class="ghost-button" id="confirmCancelButton" type="button">取消</button>
+          <button class="danger-button" id="confirmOkButton" type="button">确认</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-backdrop" id="promptModal" hidden>
+      <div class="confirm-card panel" role="dialog" aria-modal="true" aria-labelledby="promptTitle">
+        <div class="panel-heading compact">
+          <div><span class="step-label">INPUT</span><h2 id="promptTitle">输入</h2></div>
+        </div>
+        <label class="field">
+          <span id="promptLabel">新密码（至少 8 个字符）</span>
+          <div class="input-with-toggle">
+            <input id="promptInputValue" type="password" minlength="8" maxlength="64" autocomplete="new-password" required />
+            <button type="button" class="password-toggle" data-target="promptInputValue" aria-label="显示密码"></button>
+          </div>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-button" id="promptCancelButton" type="button">取消</button>
+          <button class="solid-primary" id="promptOkButton" type="button">确认</button>
+        </div>
+      </div>
+    </div>
+    <dialog class="image-preview-dialog" id="imagePreviewDialog" aria-labelledby="imagePreviewTitle">
+      <div class="image-preview-heading"><strong id="imagePreviewTitle">图片预览</strong>
+        <div><button class="text-button" id="imagePreviewZoom" type="button">原始尺寸</button><button class="modal-close" id="imagePreviewClose" type="button" aria-label="关闭图片预览">×</button></div>
+      </div>
+      <div class="image-preview-body" id="imagePreviewBody"><img id="imagePreviewImage" alt="图片预览" /></div>
+      <p class="field-hint" id="imagePreviewInfo">Esc 或点击遮罩关闭；点击“原始尺寸”查看细节。</p>
+    </dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/vendor/filepond/filepond.min.js?v=4.32.12" defer></script>
+    <script src="/vendor/filepond/filepond-plugin-image-preview.min.js?v=4.6.12" defer></script>
+    <script src="/vendor/filepond/filepond-plugin-file-validate-type.min.js?v=1.2.9" defer></script>
+    <script src="/vendor/filepond/filepond-plugin-file-validate-size.min.js?v=2.2.8" defer></script>
+    <script src="/vendor/bootstrap/bootstrap.bundle.min.js?v=5.3.8" defer></script>
+    <script src="/vendor/tom-select/tom-select.complete.min.js?v=2.4.3" defer></script>
+    <script src="/app.js?v=20261016-pw-toggle" defer></script>
+  </body>
+</html>
