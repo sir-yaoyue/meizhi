@@ -23,6 +23,11 @@ const mainContent = $("#mainContent");
 const conversationView = $("#conversationView");
 const welcomeBlock = $("#welcomeBlock");
 const conversationBlock = $("#conversationBlock");
+const conversationMeta = $("#conversationMeta");
+const conversationTitle = $("#conversationTitle");
+const conversationDeleteButton = $("#conversationDeleteButton");
+const threadHistory = $("#threadHistory");
+const turnJump = $("#turnJump");
 const jobStatus = $("#jobStatus");
 const jobId = $("#jobId");
 const jobElapsed = $("#jobElapsed");
@@ -161,6 +166,10 @@ const ICONS = {
   sun: `<svg ${ICON_ATTRS}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>`,
   moon: `<svg ${ICON_ATTRS}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
   search: `<svg ${ICON_ATTRS}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`,
+  x: `<svg ${ICON_ATTRS}><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+  trash: `<svg ${ICON_ATTRS}><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/></svg>`,
+  dots: `<svg ${ICON_ATTRS}><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>`,
+  toBottom: `<svg ${ICON_ATTRS}><path d="M12 4v11M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>`,
 };
 document.querySelectorAll("[data-icon]").forEach((el) => {
   el.innerHTML = ICONS[el.dataset.icon] || "";
@@ -173,6 +182,34 @@ let selectedJobId = null;
 let selectedJob = null;
 let allJobs = [];
 let assetsFilterValue = "all";
+
+/* ============ 多轮对话 ============ */
+let currentConversationId = "";
+let selectedConversation = null; // { id, title, jobs: [] }
+let conversations = []; // 来自 /api/conversations
+let threadSignature = "";
+let threadRequestSeq = 0;
+
+function newConversationId() {
+  try {
+    return crypto.randomUUID();
+  } catch (e) {
+    return `conv_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+function loadConversationId() {
+  try {
+    const saved = localStorage.getItem("kaishi_conversation_id");
+    if (saved && /^[A-Za-z0-9_-]{8,64}$/.test(saved)) return saved;
+  } catch (e) {}
+  const id = newConversationId();
+  try { localStorage.setItem("kaishi_conversation_id", id); } catch (e) {}
+  return id;
+}
+function saveConversationId(id) {
+  try { localStorage.setItem("kaishi_conversation_id", id); } catch (e) {}
+}
+currentConversationId = loadConversationId();
 let pollTimer = null;
 let healthTimer = null;
 let healthRequestPending = false;
@@ -286,17 +323,25 @@ $("#confirmModal").addEventListener("click", (event) => {
 });
 
 let promptResolver = null;
-function askPrompt({ title = "输入", label = "新密码（至少 8 个字符）" }) {
+function askText({ title = "输入", label = "请输入", min = 1, max = 64, value = "", type = "text", okLabel = "保存" }) {
   return new Promise((resolve) => {
     promptResolver = resolve;
     $("#promptTitle").textContent = title;
     $("#promptLabel").textContent = label;
     const input = $("#promptInputValue");
-    input.value = "";
+    input.type = type;
+    input.minLength = min;
+    input.maxLength = max;
+    input.value = value;
     input.setCustomValidity("");
+    $("#promptOkButton").textContent = okLabel;
     $("#promptModal").hidden = false;
     input.focus();
+    input.select();
   });
+}
+function askPrompt({ title, label }) {
+  return askText({ title, label, min: 8, max: 64, type: "password", okLabel: "确认" });
 }
 function closePrompt(result) {
   if (!$("#promptModal").hidden) $("#promptModal").hidden = true;
@@ -305,8 +350,9 @@ function closePrompt(result) {
 $("#promptOkButton").addEventListener("click", () => {
   const input = $("#promptInputValue");
   const value = input.value.trim();
-  if (value.length < 8) {
-    input.setCustomValidity("密码至少需要 8 个字符");
+  const min = Number(input.minLength || 1);
+  if (value.length < min) {
+    input.setCustomValidity(`内容至少需要 ${min} 个字符`);
     input.reportValidity();
     return;
   }
@@ -803,7 +849,8 @@ function bindSegmented(container, onChange) {
   container.querySelectorAll("button").forEach((btn) => {
     btn.addEventListener("click", () => {
       container.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === btn));
-      onChange(btn.dataset.value);
+      // 分段按钮历史上混用 data-value / data-filter 两种属性
+      onChange(btn.dataset.value ?? btn.dataset.filter);
     });
   });
 }
@@ -887,6 +934,10 @@ function showLogin(message = "") {
   selectedJobId = null;
   selectedJob = null;
   allJobs = [];
+  conversations = [];
+  selectedConversation = null;
+  conversationMeta.hidden = true;
+  threadHistory.replaceChildren();
   appFrame.hidden = true;
   appFrame.classList.remove("mobile-open");
   loginScreen.hidden = false;
@@ -984,9 +1035,17 @@ appFrame.addEventListener("click", (event) => {
 
 newCreationButton.addEventListener("click", newCreation);
 function newCreation() {
-  setView("conversation");
+  currentConversationId = newConversationId();
+  saveConversationId(currentConversationId);
+  selectedConversation = null;
+  conversationMeta.hidden = true;
+  threadHistory.replaceChildren();
+  threadSignature = "";
+  turnJump.hidden = true;
+  window.clearTimeout(pollTimer);
   selectedJobId = null;
   selectedJob = null;
+  setView("conversation");
   welcomeBlock.hidden = false;
   conversationBlock.hidden = true;
   closeAllPopovers();
@@ -1005,9 +1064,16 @@ function setView(view) {
   document.querySelectorAll(".sidebar-nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   viewTitle.textContent = view === "conversation" ? "创作" : view === "assets" ? "资产" : "管理";
   topbarSearch.hidden = view !== "conversation";
-  if (view !== "conversation") conversationSearch.value = "";
+  if (view !== "conversation") {
+    conversationSearch.value = "";
+    hideTurnCard();
+    turnJump.hidden = true; // 轮次轨道只在对话视图显示
+  } else {
+    renderTurnJump();
+  }
   appFrame.classList.remove("mobile-open");
-  if (view === "assets" && allJobs.length) renderAssets();
+  // 注意：不能加 allJobs.length 守卫——数据未加载完时也要渲染（显示空态提示）
+  if (view === "assets") renderAssets();
   if (view === "admin" && currentUser?.role === "admin") loadUsers();
   mainContent.scrollTop = 0;
 }
@@ -1044,55 +1110,182 @@ conversationSearch.addEventListener("input", () => {
   renderSidebarJobs();
 });
 
+async function loadConversations() {
+  if (!currentUser) return;
+  try {
+    const payload = await parseResponse(await fetch("/api/conversations?limit=30", { cache: "no-store" }));
+    conversations = payload.data || [];
+  } catch {
+    conversations = [];
+  }
+}
+
+function buildThumbFor(job) {
+  const thumb = document.createElement("span");
+  thumb.className = "sj-thumb";
+  if (job && job.result_type === "image" && job.outputs?.length) {
+    const img = document.createElement("img");
+    img.src = `${job.outputs[0].url}?v=${job.updated_at || ""}`;
+    img.alt = "";
+    img.loading = "lazy";
+    thumb.append(img);
+  } else {
+    thumb.innerHTML = job && job.result_type === "image" ? ICONS.frame : ICONS.clapper;
+  }
+  return thumb;
+}
+
+function buildJobItem(job) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.dataset.jobId = job.id;
+  btn.className = "sidebar-job" + (job.id === selectedJobId && !selectedConversation ? " active" : "");
+  const copy = document.createElement("span");
+  copy.className = "sj-copy";
+  const strong = document.createElement("strong");
+  strong.textContent = jobTitle(job);
+  const small = document.createElement("small");
+  const dot = document.createElement("i");
+  dot.className = `sj-dot ${job.status || ""}`;
+  small.append(dot, document.createTextNode(`${friendlyTask[job.task_type] || taskLabels[job.task_type] || job.task_type || "任务"} · ${relativeTime(job.created_at)}`));
+  copy.append(strong, small);
+  btn.append(buildThumbFor(job), copy);
+  btn.title = `${job.prompt || job.id}\n${formatTime(job.created_at)}`;
+  btn.addEventListener("click", () => {
+    setView("conversation");
+    openJobOrConversation(job);
+  });
+  return btn;
+}
+
+function buildConversationItem(conv, jobs) {
+  const btn = document.createElement("div");
+  btn.className = "sidebar-job" + (selectedConversation?.id === conv.id ? " active" : "");
+  btn.tabIndex = 0;
+  btn.dataset.convId = conv.id;
+  const latestInList = jobs.find((j) => j.id === conv.latest_job_id) || jobs[0] || null;
+  const copy = document.createElement("span");
+  copy.className = "sj-copy";
+  const strong = document.createElement("strong");
+  strong.textContent = conv.title;
+  const small = document.createElement("small");
+  const dot = document.createElement("i");
+  dot.className = `sj-dot ${conv.latest_status || ""}`;
+  small.append(dot, document.createTextNode(`${conv.turn_count} 轮 · ${relativeTime(conv.updated_at)}`));
+  copy.append(strong, small);
+  // DSH 逻辑：行尾 "⋯" 按钮（标题 hover 时出现，拦截点击），点开菜单
+  const kebab = document.createElement("button");
+  kebab.type = "button";
+  kebab.className = "sj-kebab";
+  kebab.title = "对话操作";
+  kebab.setAttribute("aria-label", "对话操作");
+  kebab.innerHTML = ICONS.dots;
+  kebab.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openConversationMenu(conv, kebab);
+  });
+  btn.append(buildThumbFor(latestInList), copy, kebab);
+  btn.title = conv.title;
+  btn.addEventListener("click", () => {
+    setView("conversation");
+    openConversationThread(conv.id);
+  });
+  btn.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      setView("conversation");
+      openConversationThread(conv.id);
+    }
+  });
+  // DSH 逻辑：双击标题 = 重命名
+  copy.addEventListener("dblclick", (event) => {
+    event.stopPropagation();
+    renameConversation(conv.id, conv.title);
+  });
+  return btn;
+}
+
+/* ============ 对话操作菜单（DSH "⋯" 模式） ============ */
+let convMenu = null;
+function closeConversationMenu() {
+  if (convMenu) {
+    convMenu.remove();
+    convMenu = null;
+  }
+  document.querySelectorAll(".sj-kebab.menu-open").forEach((b) => b.classList.remove("menu-open"));
+}
+function openConversationMenu(conv, anchor) {
+  closeConversationMenu();
+  anchor.classList.add("menu-open");
+  convMenu = document.createElement("div");
+  convMenu.className = "conv-menu";
+  convMenu.setAttribute("role", "menu");
+  const mkItem = (icon, text, onClick, danger = false) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "conv-menu-item" + (danger ? " danger" : "");
+    item.setAttribute("role", "menuitem");
+    const ic = document.createElement("span");
+    ic.className = "ic";
+    ic.innerHTML = icon;
+    item.append(ic, document.createTextNode(text));
+    item.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeConversationMenu();
+      onClick();
+    });
+    return item;
+  };
+  convMenu.append(
+    mkItem(ICONS.pen, "重命名对话", () => renameConversation(conv.id, conv.title)),
+  );
+  const sep = document.createElement("div");
+  sep.className = "conv-menu-sep";
+  convMenu.append(sep, mkItem(ICONS.trash, "删除对话", () => deleteConversationById(conv.id, conv.title), true));
+  document.body.append(convMenu);
+  const rect = anchor.getBoundingClientRect();
+  const mw = convMenu.offsetWidth;
+  const mh = convMenu.offsetHeight;
+  let left = rect.right - mw;
+  let top = rect.bottom + 6;
+  if (top + mh > window.innerHeight - 8) top = rect.top - mh - 6;
+  left = Math.max(8, left);
+  convMenu.style.left = `${left}px`;
+  convMenu.style.top = `${top}px`;
+}
+document.addEventListener("click", (event) => {
+  if (convMenu && !convMenu.contains(event.target) && !event.target.closest?.(".sj-kebab")) closeConversationMenu();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeConversationMenu();
+});
+
 function renderSidebarJobs() {
   sidebarJobs.replaceChildren();
-  const list = searchQuery
-    ? allJobs.filter((job) => (job.prompt || "").toLowerCase().includes(searchQuery) || jobTitle(job).toLowerCase().includes(searchQuery))
-    : allJobs;
-  if (!list.length) {
+  const q = searchQuery;
+  const convs = conversations
+    .map((conv) => ({ conv, jobs: allJobs.filter((j) => j.conversation_id === conv.id) }))
+    .filter(({ conv, jobs }) => !q || conv.title.toLowerCase().includes(q) || jobs.some((j) => (j.prompt || "").toLowerCase().includes(q)));
+  const legacy = allJobs
+    .filter((j) => !j.conversation_id)
+    .filter((j) => !q || (j.prompt || "").toLowerCase().includes(q) || jobTitle(j).toLowerCase().includes(q));
+  if (!convs.length && !legacy.length) {
     const empty = document.createElement("div");
     empty.className = "sidebar-jobs-empty";
-    empty.textContent = searchQuery ? "没有匹配的对话记录" : "暂无对话记录\n你的创作会出现在这里";
+    empty.textContent = q ? "没有匹配的对话记录" : "暂无对话记录\n点“新对话”开始创作";
     sidebarJobs.append(empty);
     return;
   }
-  list.forEach((job) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.dataset.jobId = job.id;
-    btn.className = "sidebar-job" + (job.id === selectedJobId ? " active" : "");
-    const thumb = document.createElement("span");
-    thumb.className = "sj-thumb";
-    if (job.result_type === "image" && job.outputs?.length) {
-      const img = document.createElement("img");
-      img.src = `${job.outputs[0].url}?v=${job.updated_at || ""}`;
-      img.alt = "";
-      img.loading = "lazy";
-      thumb.append(img);
-    } else {
-      thumb.innerHTML = job.result_type === "image" ? ICONS.frame : ICONS.clapper;
-    }
-    const copy = document.createElement("span");
-    copy.className = "sj-copy";
-    const strong = document.createElement("strong");
-    strong.textContent = jobTitle(job);
-    const small = document.createElement("small");
-    const dot = document.createElement("i");
-    dot.className = `sj-dot ${job.status || ""}`;
-    small.append(dot, document.createTextNode(`${friendlyTask[job.task_type] || taskLabels[job.task_type] || job.task_type || "任务"} · ${relativeTime(job.created_at)}`));
-    copy.append(strong, small);
-    btn.append(thumb, copy);
-    btn.title = `${job.prompt || job.id}\n${formatTime(job.created_at)}`;
-    btn.addEventListener("click", () => {
-      setView("conversation");
-      openConversation(job);
-    });
-    sidebarJobs.append(btn);
-  });
+  convs.forEach(({ conv, jobs }) => sidebarJobs.append(buildConversationItem(conv, jobs)));
+  legacy.forEach((job) => sidebarJobs.append(buildJobItem(job)));
 }
 
 /* ============ 对话视图 ============ */
 function openConversation(job) {
+  selectedConversation = null;
+  conversationMeta.hidden = true;
+  threadHistory.replaceChildren();
+  threadSignature = "";
+  turnJump.hidden = true;
   selectedJobId = job.id;
   selectedJob = job;
   welcomeBlock.hidden = true;
@@ -1101,6 +1294,335 @@ function openConversation(job) {
   renderSidebarJobs();
   mainContent.scrollTop = 0;
   pollJob(job.id);
+}
+
+function openJobOrConversation(job) {
+  setView("conversation");
+  if (job.conversation_id) {
+    openConversationThread(job.conversation_id);
+  } else {
+    openConversation(job);
+  }
+}
+
+async function openConversationThread(convId) {
+  const seq = ++threadRequestSeq;
+  currentConversationId = convId;
+  saveConversationId(convId);
+  setView("conversation");
+  welcomeBlock.hidden = true;
+  conversationBlock.hidden = false;
+  conversationMeta.hidden = false;
+  conversationTitle.textContent = "加载中…";
+  threadHistory.replaceChildren();
+  threadSignature = "";
+  mainContent.scrollTop = 0;
+  try {
+    const data = await parseResponse(await fetch(`/api/conversations/${encodeURIComponent(convId)}`, { cache: "no-store" }));
+    if (seq !== threadRequestSeq) return; // 用户已切走
+    if (!data.data.length) {
+      showToast("该对话的任务已全部删除", "info");
+      newCreation();
+      return;
+    }
+    selectedConversation = { ...data.conversation, jobs: data.data };
+    conversationTitle.textContent = data.conversation.title;
+    renderSidebarJobs();
+    const last = data.data[data.data.length - 1];
+    selectedJobId = last ? last.id : null;
+    selectedJob = last || null;
+    renderThread();
+  } catch (error) {
+    if (seq !== threadRequestSeq) return;
+    showToast(error.message, "error");
+  }
+}
+
+conversationDeleteButton.addEventListener("click", () => {
+  if (selectedConversation) deleteConversationById(selectedConversation.id, selectedConversation.title);
+});
+
+async function deleteConversationById(convId, title) {
+  const ok = await askConfirm({
+    title: "删除对话",
+    message: `确定删除对话“${title}”吗？其中全部任务记录和已生成的文件将被永久删除，无法恢复。`,
+    okLabel: "删除对话",
+  });
+  if (!ok) return;
+  try {
+    await parseResponse(await fetch(`/api/conversations/${encodeURIComponent(convId)}`, { method: "DELETE" }));
+    showToast("对话已删除", "success");
+    if (selectedConversation?.id === convId) {
+      selectedConversation = null;
+      conversationMeta.hidden = true;
+      threadHistory.replaceChildren();
+      threadSignature = "";
+      turnJump.hidden = true;
+      newCreation();
+    }
+    await Promise.all([loadHistory(), loadConversations()]);
+    renderSidebarJobs();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+// 重命名入口在侧边栏对话项 hover 按钮（对标 DeepSeek Harness）
+async function renameConversation(convId, currentTitle) {
+  const title = await askText({
+    title: "重命名对话",
+    label: "对话标题（1–64 个字符）",
+    min: 1, max: 64,
+    value: currentTitle,
+  });
+  if (title === null) return;
+  try {
+    const payload = await parseResponse(await fetch(`/api/conversations/${encodeURIComponent(convId)}/title`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    }));
+    conversations = conversations.map((c) => (c.id === convId ? { ...c, title: payload.title } : c));
+    if (selectedConversation?.id === convId) {
+      selectedConversation.title = payload.title;
+      conversationTitle.textContent = payload.title;
+    }
+    renderSidebarJobs();
+    showToast("对话已重命名", "success");
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+function renderThread() {
+  if (!selectedConversation || !selectedConversation.jobs.length) return;
+  const last = selectedConversation.jobs[selectedConversation.jobs.length - 1];
+  refreshThreadHistory();
+  renderConversation(last, null);
+  mainContent.scrollTop = 0;
+  pollJob(last.id);
+}
+
+function refreshThreadHistory() {
+  if (!selectedConversation) return;
+  const past = selectedConversation.jobs.slice(0, -1);
+  const sig = past.map((j) => `${j.id}:${j.status}`).join("|");
+  if (sig !== threadSignature) {
+    threadSignature = sig;
+    threadHistory.replaceChildren();
+    past.forEach((job) => threadHistory.append(buildTurnCard(job)));
+  }
+  renderTurnJump();
+}
+
+/* ============ 轮次轨道（DSH 逻辑：固定间距刻度 + 滚动跟随高亮 + 预览卡片 + 回到底部） ============ */
+const turnTrackCard = document.createElement("div");
+turnTrackCard.className = "tj-card";
+document.body.append(turnTrackCard);
+function showTurnCard(mark, index, job) {
+  turnTrackCard.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "tj-card-head";
+  head.textContent = `第 ${index + 1} 轮 · ${labels[job.status] || job.status}`;
+  const prompt = document.createElement("div");
+  prompt.className = "tj-card-prompt";
+  prompt.textContent = job.prompt || `（第 ${index + 1} 轮）`;
+  turnTrackCard.append(head, prompt);
+  turnTrackCard.classList.add("show");
+  const rect = mark.getBoundingClientRect();
+  const w = turnTrackCard.offsetWidth;
+  const h = turnTrackCard.offsetHeight;
+  let top = rect.top + rect.height / 2 - h / 2;
+  top = Math.min(Math.max(8, top), window.innerHeight - h - 8);
+  turnTrackCard.style.left = `${Math.max(8, rect.left - w - 10)}px`;
+  turnTrackCard.style.top = `${top}px`;
+}
+function hideTurnCard() {
+  turnTrackCard.classList.remove("show");
+}
+
+function renderTurnJump() {
+  turnJump.replaceChildren();
+  hideTurnCard();
+  const jobs = selectedConversation ? selectedConversation.jobs : [];
+  if (!selectedConversation || jobs.length < 2) {
+    turnJump.hidden = true;
+    return;
+  }
+  turnJump.hidden = false;
+  turnTrackPinnedUntil = 0; // 重新构建轨道时解除点击锁定
+  const cards = [...threadHistory.children];
+  jobs.forEach((job, index) => {
+    const mark = document.createElement("button");
+    mark.type = "button";
+    mark.className = "tj-mark";
+    mark.setAttribute("aria-label", `跳转到第 ${index + 1} 轮`);
+    mark.addEventListener("mouseenter", () => showTurnCard(mark, index, job));
+    mark.addEventListener("mouseleave", hideTurnCard);
+    mark.addEventListener("focus", () => showTurnCard(mark, index, job));
+    mark.addEventListener("blur", hideTurnCard);
+    mark.addEventListener("click", () => {
+      hideTurnCard();
+      // 点击优先：立即高亮被点击的刻度，并锁定（平滑滚动期间几何判定不抢高亮）
+      [...turnJump.querySelectorAll(".tj-mark")].forEach((m, i) => m.classList.toggle("current", i === index));
+      const notScrollable = mainContent.scrollHeight <= mainContent.clientHeight + 4;
+      // 整屏放得下的对话没有滚动可跟随，点击的刻度保持高亮；可滚动对话锁定 1.2s
+      turnTrackPinnedUntil = notScrollable ? Number.MAX_SAFE_INTEGER : performance.now() + 1200;
+      const target = index === jobs.length - 1
+        ? conversationBlock.querySelector(".conversation-head")
+        : cards[index];
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    turnJump.append(mark);
+  });
+  // 回到底部（DSH：轨道旁的回到底部按钮）
+  const back = document.createElement("button");
+  back.type = "button";
+  back.className = "tj-back";
+  back.title = "回到最新一轮";
+  back.setAttribute("aria-label", "回到最新一轮");
+  back.innerHTML = ICONS.toBottom;
+  back.addEventListener("click", () => {
+    const head = conversationBlock.querySelector(".conversation-head");
+    if (head) head.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  turnJump.append(back);
+  updateTurnTrackActive();
+}
+
+// 高亮跟随滚动（顶线穿越算法）：最后一个"顶部已越过检测线"的轮次为当前轮次。
+// 检测线取容器顶部下方 96px——点击某刻度滚动到位后，其上方不会再有轮次越线，高亮稳定不漂移
+let turnTrackPinnedUntil = 0;
+function updateTurnTrackActive() {
+  if (turnJump.hidden || !selectedConversation) return;
+  const marks = [...turnJump.querySelectorAll(".tj-mark")];
+  if (!marks.length) return;
+  if (performance.now() < turnTrackPinnedUntil) return; // 锁定期间尊重点击的刻度
+  const notScrollable = mainContent.scrollHeight <= mainContent.clientHeight + 4;
+  if (notScrollable) {
+    // 整屏可见：活动轮次是最新一轮（DSH 尾部定位语义）
+    marks.forEach((m, i) => m.classList.toggle("current", i === marks.length - 1));
+    return;
+  }
+  const box = mainContent.getBoundingClientRect();
+  const line = box.top + 96;
+  const targets = [...threadHistory.children];
+  const head = conversationBlock.querySelector(".conversation-head");
+  if (head) targets.push(head);
+  let found = 0;
+  targets.forEach((el, i) => {
+    if (el.getBoundingClientRect().top <= line) found = i;
+  });
+  marks.forEach((mark, i) => mark.classList.toggle("current", i === found));
+}
+let turnTrackRaf = 0;
+mainContent.addEventListener("scroll", () => {
+  if (turnTrackRaf) return;
+  turnTrackRaf = requestAnimationFrame(() => {
+    turnTrackRaf = 0;
+    updateTurnTrackActive();
+  });
+});
+// 内容尺寸变化（新轮次/媒体加载/窗口缩放）时同步高亮，避免状态过期
+try {
+  new ResizeObserver(() => updateTurnTrackActive()).observe(conversationBlock);
+} catch (e) {}
+let turnTrackResizeTimer = 0;
+window.addEventListener("resize", () => {
+  window.clearTimeout(turnTrackResizeTimer);
+  turnTrackResizeTimer = window.setTimeout(updateTurnTrackActive, 150);
+});
+
+function buildTurnCard(job) {
+  const card = document.createElement("div");
+  card.className = `turn-card turn-${job.status || ""}`;
+  const head = document.createElement("div");
+  head.className = "turn-head";
+  const pill = document.createElement("span");
+  pill.className = `status-pill ${job.status || ""}`;
+  pill.textContent = labels[job.status] || job.status;
+  const time = document.createElement("span");
+  time.className = "turn-time";
+  time.textContent = formatTime(job.created_at);
+  head.append(pill, time);
+  const promptEl = document.createElement("div");
+  promptEl.className = "turn-prompt";
+  promptEl.textContent = job.prompt || "";
+  card.append(head, promptEl);
+  if (job.download_url) {
+    const vid = document.createElement("video");
+    vid.controls = true;
+    vid.playsInline = true;
+    vid.preload = "metadata";
+    vid.src = `${job.download_url}?v=${job.updated_at || ""}`;
+    card.append(vid);
+  }
+  if (job.result_type === "image" && job.outputs?.length) {
+    const row = document.createElement("div");
+    row.className = "turn-images";
+    job.outputs.forEach((output, index) => {
+      const img = document.createElement("img");
+      img.src = `${output.url}?v=${job.updated_at || ""}`;
+      img.alt = `第 ${index + 1} 张图片`;
+      img.loading = "lazy";
+      img.addEventListener("click", () => openImagePreview(img.src, `图片 ${index + 1}`));
+      row.append(img);
+    });
+    card.append(row);
+  }
+  const failure = errorText(job.error);
+  if (failure) {
+    const err = document.createElement("div");
+    err.className = "turn-error";
+    err.textContent = failure;
+    card.append(err);
+  }
+  const actions = document.createElement("div");
+  actions.className = "turn-actions";
+  actions.append(mkTurnButton("pen", "重新编辑", () => prefillFromJob(job)));
+  if (job.status === "queued") {
+    const cancel = mkTurnButton("x", "取消任务", async () => {
+      const ok = await askConfirm({ title: "取消任务", message: "该任务尚未开始处理，确定取消吗？", okLabel: "取消任务" });
+      if (!ok) return;
+      cancel.disabled = true;
+      try {
+        await parseResponse(await fetch(`/api/jobs/${encodeURIComponent(job.id)}`, { method: "DELETE" }));
+        showToast("任务已取消", "success");
+        await openConversationThread(selectedConversation.id);
+      } catch (error) {
+        showToast(error.message, "error");
+      }
+    });
+    actions.append(cancel);
+  }
+  if (["failed", "cancelled"].includes(job.status)) {
+    const regen = mkTurnButton("refresh", "再次生成", async () => {
+      regen.disabled = true;
+      try {
+        await parseResponse(await fetch(`/api/jobs/${encodeURIComponent(job.id)}/retry`, { method: "POST" }));
+        showToast("任务已重新提交", "success");
+        await openConversationThread(selectedConversation.id);
+      } catch (error) {
+        showToast(error.message, "error");
+      } finally {
+        regen.disabled = false;
+      }
+    });
+    actions.append(regen);
+  }
+  card.append(actions);
+  return card;
+}
+
+function mkTurnButton(icon, text, onClick) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "ghost-button sm";
+  const ic = document.createElement("span");
+  ic.className = "ic";
+  ic.innerHTML = ICONS[icon] || "";
+  btn.append(ic, document.createTextNode(text));
+  btn.addEventListener("click", onClick);
+  return btn;
 }
 
 function formatElapsed(totalSeconds) {
@@ -1293,9 +1815,16 @@ function renderConversation(job, runtime = null) {
 }
 
 reeditButton.addEventListener("click", () => {
-  if (!selectedJob) return;
-  const job = selectedJob;
+  if (selectedJob) prefillFromJob(selectedJob);
+});
+
+function prefillFromJob(job) {
   const p = submittedParams.get(job.id) || {};
+  // 重新编辑继承该任务所属的对话
+  if (job.conversation_id) {
+    currentConversationId = job.conversation_id;
+    saveConversationId(currentConversationId);
+  }
   if (p.mode && p.mode !== activeMode) setMode(p.mode);
   if (p.createMode === "edit" || p.createMode === "generate") {
     if (p.mode === "qwen_image") qwenCreateMode = p.createMode;
@@ -1331,7 +1860,7 @@ reeditButton.addEventListener("click", () => {
   setView("conversation");
   promptInput.focus();
   showToast("已恢复该任务的参数，修改后重新提交即可", "info");
-});
+}
 
 function syncSegmented(container, value) {
   container.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.value === value));
@@ -1352,6 +1881,11 @@ cancelJobButton.addEventListener("click", async () => {
     const job = await parseResponse(await fetch(`/api/jobs/${encodeURIComponent(id)}`, { cache: "no-store" }));
     window.clearTimeout(pollTimer);
     selectedJob = job;
+    if (selectedConversation && job.conversation_id === selectedConversation.id) {
+      const idx = selectedConversation.jobs.findIndex((j) => j.id === job.id);
+      if (idx !== -1) selectedConversation.jobs[idx] = job;
+      refreshThreadHistory();
+    }
     renderConversation(job, null);
     showToast("任务已取消", "success");
     loadHistory();
@@ -1375,7 +1909,7 @@ regenerateButton.addEventListener("click", async () => {
   regenerateButton.disabled = true;
   try {
     const job = await parseResponse(await fetch(`/api/jobs/${encodeURIComponent(id)}/retry`, { method: "POST" }));
-    openConversation(job);
+    openJobOrConversation(job);
     showToast("任务已重新提交", "success");
     loadHistory();
   } catch (error) {
@@ -1401,7 +1935,20 @@ deleteJobButton.addEventListener("click", async () => {
   try {
     await parseResponse(await fetch(`/api/jobs/${encodeURIComponent(id)}/${image ? "images" : "video"}`, { method: "DELETE" }));
     window.clearTimeout(pollTimer);
-    if (selectedJobId === id) newCreation();
+    if (selectedJobId === id) {
+      const convId = selectedConversation?.id;
+      selectedConversation = null;
+      selectedJobId = null;
+      selectedJob = null;
+      conversationMeta.hidden = true;
+      threadHistory.replaceChildren();
+      threadSignature = "";
+      if (convId) {
+        await openConversationThread(convId); // 对话内已无任务时会自动开新对话
+      } else {
+        newCreation();
+      }
+    }
     await loadHistory();
     showToast(`${image ? "图片" : "视频"}文件和生成记录已删除，无法恢复`, "success");
   } catch (error) {
@@ -1421,6 +1968,12 @@ async function pollJob(id) {
     ]);
     if (id !== selectedJobId || !currentUser) return;
     selectedJob = job;
+    if (selectedConversation && job.conversation_id === selectedConversation.id) {
+      const idx = selectedConversation.jobs.findIndex((j) => j.id === job.id);
+      if (idx === -1) selectedConversation.jobs.push(job);
+      else selectedConversation.jobs[idx] = job;
+      refreshThreadHistory();
+    }
     renderConversation(job, runtime);
     if (!TERMINAL_STATUSES.includes(job.status)) {
       pollTimer = window.setTimeout(() => pollJob(id), 3000);
@@ -1788,6 +2341,7 @@ function collectVideoBody() {
   body.set("task_type", mode);
   body.set("prompt", buildPrompt());
   if (!body.get("prompt")) throw new Error("提示词不能为空");
+  if (currentConversationId) body.set("conversation_id", currentConversationId);
   if (mode === "fl2va") {
     body.set("frame_mode", frameMode);
     const images = referencePond.getFiles();
@@ -1833,8 +2387,7 @@ async function submitVideoJob() {
     const body = collectVideoBody();
     const job = await parseResponse(await fetch("/api/jobs", { method: "POST", body }));
     submittedParams.set(job.id, captured);
-    openConversation(job);
-    setView("conversation");
+    openJobOrConversation(job);
     showToast(`任务已加入队列，当前第 ${job.queue_position || 1} 位`, "success");
     loadHistory();
   } catch (error) {
@@ -1848,6 +2401,7 @@ function collectImagePayload(kind) {
   const prompt = promptInput.value.trim();
   if (!prompt) throw new Error("提示词不能为空");
   const payload = { prompt };
+  if (currentConversationId) payload.conversation_id = currentConversationId;
   const createMode = kind === "qwen" ? qwenCreateMode : zCreateMode;
   payload.mode = createMode;
   if (createMode === "edit") {
@@ -1936,8 +2490,7 @@ async function submitImageJob(kind) {
     }
     const job = await parseResponse(await fetch(url, options));
     submittedParams.set(job.id, captured);
-    openConversation(job);
-    setView("conversation");
+    openJobOrConversation(job);
     showToast(`${kind === "qwen" ? "Qwen 图像" : "造相"}任务已加入队列，当前第 ${job.queue_position || 1} 位`, "success");
     loadHistory();
   } catch (error) {
@@ -1961,6 +2514,7 @@ async function loadHistory() {
   try {
     const payload = await parseResponse(await fetch("/api/jobs?limit=30", { cache: "no-store" }));
     allJobs = payload.data || [];
+    await loadConversations();
     renderSidebarJobs();
     if (currentView === "assets") renderAssets();
     if (selectedJobId) {

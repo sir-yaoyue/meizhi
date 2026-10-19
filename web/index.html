@@ -7,7 +7,8 @@
     <title>美超智影 · AI 视频创作平台</title>
     <script>
       (function () {
-        var theme = "dark";
+        // 浅色为默认主题；已手动切换过的用户保留其选择
+        var theme = "light";
         try {
           var saved = localStorage.getItem("kaishi_theme");
           if (saved === "light" || saved === "dark") theme = saved;
@@ -18,7 +19,7 @@
     <link rel="stylesheet" href="/vendor/filepond/filepond.min.css?v=4.32.12" />
     <link rel="stylesheet" href="/vendor/filepond/filepond-plugin-image-preview.min.css?v=4.6.12" />
     <link rel="stylesheet" href="/vendor/bootstrap/bootstrap.min.css?v=5.3.8" />
-    <link rel="stylesheet" href="/styles.css?v=20261019-batch3c" />
+    <link rel="stylesheet" href="/styles.css?v=20261019-conv9" />
   </head>
   <body>
     <section class="login-screen" id="loginScreen">
@@ -50,7 +51,7 @@
           </a>
           <button class="text-button sidebar-collapse" id="sidebarCollapse" type="button" title="收起侧边栏"><span class="ic" data-icon="chevronLeft"></span></button>
         </div>
-        <button class="new-creation" id="newCreationButton" type="button"><span class="ic nc-icon" data-icon="plus"></span><span class="nc-label">新创作</span></button>
+        <button class="new-creation" id="newCreationButton" type="button" title="开始一个新对话"><span class="ic nc-icon" data-icon="plus"></span><span class="nc-label">新对话</span></button>
         <nav class="sidebar-nav" aria-label="主导航">
           <button class="sidebar-nav-item active" type="button" data-view="conversation"><span class="ic sn-icon" data-icon="chat"></span><span class="sn-label">创作</span></button>
           <button class="sidebar-nav-item" type="button" data-view="assets"><span class="ic sn-icon" data-icon="gallery"></span><span class="sn-label">资产</span></button>
@@ -92,11 +93,22 @@
           <section class="view" id="conversationView">
             <div class="conversation-wrap" id="conversationWrap">
               <div class="welcome" id="welcomeBlock">
+                <div class="welcome-emblem"><img src="/brand-logo.png" alt="" /></div>
                 <p class="eyebrow"><span></span> MEICHAO AI VIDEO</p>
                 <h1>你好，今天想创作什么？</h1>
-                <p class="welcome-hint">在下方输入框描述你的画面，点击底部选项可切换模式和参数；Enter 提交，Shift+Enter 换行。</p>
+                <p class="welcome-hint">在下方描述你的画面，点击底部选项切换模式和参数 · Enter 提交，Shift+Enter 换行</p>
               </div>
               <article class="conversation" id="conversationBlock" hidden>
+                <div class="conversation-meta" id="conversationMeta" hidden>
+                  <div class="conversation-title-wrap">
+                    <span class="step-label">对话</span>
+                    <h3 id="conversationTitle"></h3>
+                  </div>
+                  <div class="conversation-meta-actions">
+                    <button class="text-button danger-text" id="conversationDeleteButton" type="button">删除对话</button>
+                  </div>
+                </div>
+                <div class="thread-history" id="threadHistory"></div>
                 <header class="conversation-head">
                   <span class="status-pill" id="jobStatus">排队中</span>
                   <code id="jobId"></code>
@@ -164,6 +176,9 @@
             </div>
           </section>
         </div>
+
+        <!-- 对话轮次跳转条（宽屏右侧） -->
+        <div class="turn-jump" id="turnJump" hidden aria-label="对话轮次"></div>
 
         <!-- ============ 底部 composer ============ -->
         <footer class="composer-dock" id="composerDock">
@@ -413,6 +428,6 @@
     <script src="/vendor/filepond/filepond-plugin-file-validate-type.min.js?v=1.2.9" defer></script>
     <script src="/vendor/filepond/filepond-plugin-file-validate-size.min.js?v=2.2.8" defer></script>
     <script src="/vendor/bootstrap/bootstrap.bundle.min.js?v=5.3.8" defer></script>
-    <script src="/app.js?v=20261019-batch3c" defer></script>
+    <script src="/app.js?v=20261019-conv9" defer></script>
   </body>
 </html>

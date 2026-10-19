@@ -224,8 +224,23 @@ def init_db() -> None:
             ("result_type", "TEXT NOT NULL DEFAULT 'video'"),
             ("upstream_base", "TEXT"),
             ("result_paths", "TEXT"),
+            ("conversation_id", "TEXT"),
         ):
             add_column(conn, name, declaration)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversations (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                title TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at DESC)"
+        )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -420,6 +435,41 @@ def row_to_job(row: sqlite3.Row) -> dict[str, Any]:
 def get_job_row(job_id: str) -> sqlite3.Row | None:
     with db_connect() as conn:
         return conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+
+
+CONVERSATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+def clean_conversation_id(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if not CONVERSATION_ID_PATTERN.fullmatch(text):
+        raise HTTPException(status_code=400, detail="无效的对话 ID")
+    return text
+
+
+def touch_conversation(conn: sqlite3.Connection, conversation_id: str | None, user_id: int, title: str, now: int) -> None:
+    if not conversation_id:
+        return
+    conn.execute(
+        """
+        INSERT INTO conversations (id, user_id, title, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at
+        """,
+        (conversation_id, user_id, title[:64], now, now),
+    )
+
+
+def get_conversation_authorized(conversation_id: str, user: dict[str, Any]) -> sqlite3.Row:
+    if not CONVERSATION_ID_PATTERN.fullmatch(conversation_id):
+        raise HTTPException(status_code=404, detail="对话不存在")
+    with db_connect() as conn:
+        row = conn.execute("SELECT * FROM conversations WHERE id = ?", (conversation_id,)).fetchone()
+    if row is None or (user["role"] != "admin" and int(row["user_id"]) != int(user["id"])):
+        raise HTTPException(status_code=404, detail="对话不存在")
+    return row
 
 
 def get_authorized_job(job_id: str, user: dict[str, Any]) -> sqlite3.Row:
@@ -1097,6 +1147,7 @@ async def create_job(request: Request) -> JSONResponse:
     extra_params: dict[str, Any] = {"task": task_type}
     frame_mode = "first"
     file_index = 0
+    conversation_id: str | None = None
     for key, value in form.multi_items():
         if isinstance(value, UploadFile):
             filename = Path(value.filename or "reference.bin").name
@@ -1131,6 +1182,9 @@ async def create_job(request: Request) -> JSONResponse:
             if not text:
                 continue
             if key == "task_type":
+                continue
+            if key == "conversation_id":
+                conversation_id = clean_conversation_id(text)
                 continue
             if key == "frame_mode":
                 frame_mode = text
@@ -1210,12 +1264,14 @@ async def create_job(request: Request) -> JSONResponse:
     manifest = {"fields": fields, "files": files}
     now = int(time.time())
     with db_connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        touch_conversation(conn, conversation_id, user["id"], prompt, now)
         conn.execute(
             """
             INSERT INTO jobs (
                 id, status, prompt, model, progress, created_at, updated_at,
-                user_id, request_json, task_type, result_type, upstream_base
-            ) VALUES (?, 'queued', ?, ?, 0, ?, ?, ?, ?, ?, 'video', ?)
+                user_id, request_json, task_type, result_type, upstream_base, conversation_id
+            ) VALUES (?, 'queued', ?, ?, 0, ?, ?, ?, ?, ?, 'video', ?, ?)
             """,
             (
                 local_id,
@@ -1227,6 +1283,7 @@ async def create_job(request: Request) -> JSONResponse:
                 json.dumps(manifest, ensure_ascii=False),
                 task_type,
                 upstream_base,
+                conversation_id,
             ),
         )
     dispatcher_wakeup.set()
@@ -1352,6 +1409,7 @@ async def create_qwen_image_job(request: Request) -> JSONResponse:
             payload = await request.json()
         except ValueError:
             raise HTTPException(status_code=400, detail="请求 JSON 格式不正确") from None
+    conversation_id = clean_conversation_id(payload.pop("conversation_id", None) if isinstance(payload, dict) else None)
     local_id = f"{'z' if z_image else 'qwen'}_image_job_{uuid.uuid4().hex}"
     job_dir = QUEUE_DIR / local_id
     saved_paths: list[Path] = []
@@ -1394,13 +1452,15 @@ async def create_qwen_image_job(request: Request) -> JSONResponse:
             ).fetchone()[0]
             if total_count >= MAX_TOTAL_JOBS:
                 raise HTTPException(status_code=503, detail="服务器任务队列已满，请稍后再试")
+            touch_conversation(conn, conversation_id, user["id"], clean["prompt"], now)
             conn.execute(
                 """INSERT INTO jobs (
                     id, status, prompt, model, progress, created_at, updated_at, user_id,
-                    request_json, task_type, result_type, upstream_base
-                ) VALUES (?, 'queued', ?, ?, 0, ?, ?, ?, ?, ?, 'image', ?)""",
+                    request_json, task_type, result_type, upstream_base, conversation_id
+                ) VALUES (?, 'queued', ?, ?, 0, ?, ?, ?, ?, ?, 'image', ?, ?)""",
                 (local_id, clean["prompt"], clean["model"], now, now, user["id"],
-                 json.dumps({"json": clean, "files": files}, ensure_ascii=False), task_type, upstream_base),
+                 json.dumps({"json": clean, "files": files}, ensure_ascii=False), task_type, upstream_base,
+                 conversation_id),
             )
     except Exception:
         for path in saved_paths:
@@ -1650,6 +1710,7 @@ async def retry_job(job_id: str, request: Request) -> JSONResponse:
         prefix = "image_job_"
     new_id = f"{prefix}{uuid.uuid4().hex}"
     now = int(time.time())
+    conversation_id = row["conversation_id"]
     with db_connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
         total_count = conn.execute(
@@ -1657,12 +1718,13 @@ async def retry_job(job_id: str, request: Request) -> JSONResponse:
         ).fetchone()[0]
         if total_count >= MAX_TOTAL_JOBS:
             raise HTTPException(status_code=503, detail="服务器任务队列已满，请稍后再试")
+        touch_conversation(conn, conversation_id, user["id"], str(row["prompt"]), now)
         conn.execute(
             """
             INSERT INTO jobs (
                 id, status, prompt, model, progress, created_at, updated_at,
-                user_id, request_json, task_type, result_type, upstream_base
-            ) VALUES (?, 'queued', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+                user_id, request_json, task_type, result_type, upstream_base, conversation_id
+            ) VALUES (?, 'queued', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 new_id,
@@ -1675,10 +1737,123 @@ async def retry_job(job_id: str, request: Request) -> JSONResponse:
                 str(row["task_type"]),
                 str(row["result_type"]),
                 row["upstream_base"],
+                conversation_id,
             ),
         )
     dispatcher_wakeup.set()
     return JSONResponse(row_to_job(get_job_row(new_id)), status_code=202)
+
+
+@app.get("/api/conversations")
+async def list_conversations(request: Request, limit: int = 30) -> dict[str, Any]:
+    user = current_user(request)
+    safe_limit = min(max(limit, 1), 50)
+    with db_connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT c.id, c.title, c.created_at, c.updated_at,
+                   lj.id AS latest_job_id, lj.status AS latest_status,
+                   lj.result_type AS latest_result_type, lj.created_at AS latest_created_at,
+                   (SELECT COUNT(*) FROM jobs j2 WHERE j2.conversation_id = c.id) AS turn_count
+            FROM conversations c
+            LEFT JOIN jobs lj ON lj.id = (
+                SELECT j3.id FROM jobs j3
+                WHERE j3.conversation_id = c.id
+                ORDER BY j3.rowid DESC LIMIT 1
+            )
+            WHERE c.user_id = ?
+            ORDER BY c.updated_at DESC, c.created_at DESC
+            LIMIT ?
+            """,
+            (user["id"], safe_limit),
+        ).fetchall()
+    return {"data": [dict(row) for row in rows]}
+
+
+@app.get("/api/conversations/{conversation_id}")
+async def get_conversation(conversation_id: str, request: Request) -> dict[str, Any]:
+    user = current_user(request)
+    row = get_conversation_authorized(conversation_id, user)
+    with db_connect() as conn:
+        jobs = conn.execute(
+            "SELECT * FROM jobs WHERE conversation_id = ? ORDER BY rowid ASC LIMIT 100",
+            (conversation_id,),
+        ).fetchall()
+    return {
+        "conversation": {
+            "id": row["id"], "title": row["title"],
+            "created_at": row["created_at"], "updated_at": row["updated_at"],
+        },
+        "data": [row_to_job(job) for job in jobs],
+    }
+
+
+@app.post("/api/conversations/{conversation_id}/title")
+async def rename_conversation(conversation_id: str, request: Request) -> dict[str, Any]:
+    user = current_user(request)
+    row = get_conversation_authorized(conversation_id, user)
+    payload = await request.json()
+    title = str(payload.get("title") or "").strip()
+    if not 1 <= len(title) <= 64:
+        raise HTTPException(status_code=400, detail="标题长度须在 1–64 个字符")
+    with db_connect() as conn:
+        if int(row["user_id"]) != int(user["id"]):
+            raise HTTPException(status_code=403, detail="只能重命名自己的对话")
+        conn.execute(
+            "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?",
+            (title, int(time.time()), conversation_id),
+        )
+    return {"ok": True, "id": conversation_id, "title": title}
+
+
+@app.delete("/api/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str, request: Request) -> dict[str, Any]:
+    user = current_user(request)
+    row = get_conversation_authorized(conversation_id, user)
+    with db_connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        jobs = conn.execute(
+            "SELECT id, status, video_path, result_paths FROM jobs WHERE conversation_id = ?",
+            (conversation_id,),
+        ).fetchall()
+        active = [job for job in jobs if job["status"] in ACTIVE_STATUSES or job["status"] == "queued"]
+        if active:
+            raise HTTPException(status_code=409, detail="对话中仍有进行中的任务，请先取消或删除后再删除对话")
+        deleted_files = 0
+        try:
+            for job in jobs:
+                video_path = job["video_path"]
+                if video_path:
+                    target = Path(video_path)
+                    if (target.parent == VIDEO_DIR and not target.is_symlink()
+                            and re.fullmatch(re.escape(job["id"]) + r"\.mp4", target.name)):
+                        if target.is_file():
+                            target.unlink()
+                            deleted_files += 1
+                raw_paths = job["result_paths"]
+                if raw_paths:
+                    try:
+                        paths = json.loads(raw_paths)
+                    except json.JSONDecodeError:
+                        paths = []
+                    for value in paths if isinstance(paths, list) else []:
+                        target = Path(str(value))
+                        if (target.parent == IMAGE_DIR and not target.is_symlink()
+                                and SAFE_ID.match(target.name)):
+                            if target.is_file():
+                                target.unlink()
+                                deleted_files += 1
+        except OSError:
+            logger.exception("Conversation deletion failed: id=%s", conversation_id)
+            raise HTTPException(status_code=500, detail="部分文件删除失败，对话已保留，请重试") from None
+        conn.execute("DELETE FROM jobs WHERE conversation_id = ?", (conversation_id,))
+        conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+    for job in jobs:
+        monitor_task = monitor_tasks.get(job["id"])
+        if monitor_task:
+            monitor_task.cancel()
+    dispatcher_wakeup.set()
+    return {"ok": True, "deleted_jobs": len(jobs), "deleted_files": deleted_files}
 
 
 @app.post("/api/admin/users/{user_id}/password")
