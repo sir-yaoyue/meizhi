@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="/vendor/filepond/filepond.min.css?v=4.32.12" />
     <link rel="stylesheet" href="/vendor/filepond/filepond-plugin-image-preview.min.css?v=4.6.12" />
     <link rel="stylesheet" href="/vendor/bootstrap/bootstrap.min.css?v=5.3.8" />
-    <link rel="stylesheet" href="/styles.css?v=20261019-chatui" />
+    <link rel="stylesheet" href="/styles.css?v=20261019-batch3c" />
   </head>
   <body>
     <section class="login-screen" id="loginScreen">
@@ -48,13 +48,13 @@
             <span class="brand-mark"><img src="/brand-logo.png" alt="美超" /></span>
             <span class="brand-copy"><strong>美超智影</strong><small>MEICHAO AI VIDEO</small></span>
           </a>
-          <button class="text-button sidebar-collapse" id="sidebarCollapse" type="button" title="收起侧边栏">⟨</button>
+          <button class="text-button sidebar-collapse" id="sidebarCollapse" type="button" title="收起侧边栏"><span class="ic" data-icon="chevronLeft"></span></button>
         </div>
-        <button class="new-creation" id="newCreationButton" type="button"><span class="nc-icon">＋</span><span class="nc-label">新创作</span></button>
+        <button class="new-creation" id="newCreationButton" type="button"><span class="ic nc-icon" data-icon="plus"></span><span class="nc-label">新创作</span></button>
         <nav class="sidebar-nav" aria-label="主导航">
-          <button class="sidebar-nav-item active" type="button" data-view="conversation"><span class="sn-icon">💬</span><span class="sn-label">创作</span></button>
-          <button class="sidebar-nav-item" type="button" data-view="assets"><span class="sn-icon">▦</span><span class="sn-label">资产</span></button>
-          <button class="sidebar-nav-item" type="button" data-view="admin" id="adminNavButton" hidden><span class="sn-icon">⚙</span><span class="sn-label">管理</span></button>
+          <button class="sidebar-nav-item active" type="button" data-view="conversation"><span class="ic sn-icon" data-icon="chat"></span><span class="sn-label">创作</span></button>
+          <button class="sidebar-nav-item" type="button" data-view="assets"><span class="ic sn-icon" data-icon="gallery"></span><span class="sn-label">资产</span></button>
+          <button class="sidebar-nav-item" type="button" data-view="admin" id="adminNavButton" hidden><span class="ic sn-icon" data-icon="users"></span><span class="sn-label">管理</span></button>
         </nav>
         <div class="sidebar-jobs" id="sidebarJobs" aria-label="对话记录"></div>
         <div class="sidebar-foot">
@@ -74,9 +74,14 @@
       <!-- ============ 主区域 ============ -->
       <main class="main-col">
         <header class="main-topbar">
-          <button class="text-button sidebar-expand" id="sidebarExpand" type="button" title="展开侧边栏" hidden>☰</button>
+          <button class="text-button sidebar-expand" id="sidebarExpand" type="button" title="展开侧边栏" hidden><span class="ic" data-icon="menu"></span></button>
           <div class="topbar-title" id="viewTitle">创作</div>
+          <div class="topbar-search" id="topbarSearch" hidden>
+            <span class="ic" data-icon="search"></span>
+            <input id="conversationSearch" type="text" placeholder="搜索对话记录" autocomplete="off" />
+          </div>
           <div class="queue-mini" id="queueMini">
+            <i class="qm-dot" id="queueMiniDot" title="服务状态"></i>
             <span>运行 <strong id="queueRunningCount">—</strong></span>
             <span>等待 <strong id="queueWaitingCount">—</strong></span>
           </div>
@@ -99,6 +104,14 @@
                 </header>
                 <div class="conversation-prompt" id="conversationPrompt"></div>
                 <div class="conversation-params" id="conversationParams" hidden></div>
+                <div class="gen-placeholder" id="genPlaceholder" hidden>
+                  <div class="gen-shimmer"></div>
+                  <div class="gen-center">
+                    <span class="gen-pulse" id="genPulse" hidden></span>
+                    <b id="genPercent" hidden></b>
+                    <span id="genText"></span>
+                  </div>
+                </div>
                 <div class="progress-track" id="progressTrack" hidden><span id="progressBar"></span></div>
                 <p class="status-message" id="statusMessage"></p>
                 <div class="runtime-events" id="runtimeEvents" hidden></div>
@@ -106,9 +119,9 @@
                 <div class="image-gallery" id="imageGallery" hidden></div>
                 <div class="error-box" id="errorBox" hidden></div>
                 <div class="conversation-actions" id="conversationActions">
-                  <button class="ghost-button" id="reeditButton" type="button">✎ 重新编辑</button>
-                  <button class="ghost-button" id="cancelJobButton" type="button" hidden>取消任务</button>
-                  <button class="solid-primary" id="regenerateButton" type="button" hidden>↻ 再次生成</button>
+                  <button class="ghost-button" id="reeditButton" type="button"><span class="ic" data-icon="pen"></span>重新编辑</button>
+                  <button class="ghost-button" id="cancelJobButton" type="button">取消任务</button>
+                  <button class="solid-primary" id="regenerateButton" type="button" hidden><span class="ic" data-icon="refresh"></span>再次生成</button>
                   <a class="download-button" id="downloadButton" download hidden>下载</a>
                   <button class="danger-button" id="deleteJobButton" type="button" hidden>删除</button>
                 </div>
@@ -224,7 +237,7 @@
 
             <div class="composer-structured" id="structuredPanel" hidden>
               <div class="structured-grid">
-                <label class="field inline"><span>画面与动作<small>可写 [镜头1] [镜头2]</small></span><textarea id="structuredVisuals" rows="2" placeholder="[镜头1] 电影感，清晨的雪山之巅……"></textarea><button type="button" class="text-button" id="addShotButton">＋ 添加镜头标记</button></label>
+                <label class="field inline"><span>画面与动作<small>可写 [镜头1] [镜头2]</small></span><textarea id="structuredVisuals" rows="2" placeholder="[镜头1] 电影感，清晨的雪山之巅……"></textarea><button type="button" class="text-button" id="addShotButton"><span class="ic" data-icon="plus"></span>添加镜头标记</button></label>
                 <label class="field inline"><span>环境声音（可选）</span><input id="structuredSound" type="text" maxlength="400" placeholder="风声、脚步、呼吸声……" /></label>
                 <label class="field inline"><span>背景音乐（可选）</span><input id="structuredMusic" type="text" maxlength="400" placeholder="只有观众能听到" /></label>
               </div>
@@ -239,24 +252,24 @@
 
             <div class="composer-chips-wrap">
               <div class="composer-chips" id="composerChips">
-                <button type="button" class="param-chip" id="chipMode"><i>▤</i><b id="chipModeVal">文生视频</b></button>
-                <button type="button" class="param-chip" id="chipSize"><i>▭</i>画幅<b id="chipSizeVal">默认</b></button>
-                <button type="button" class="param-chip" id="chipDuration"><i>◷</i>时长<b id="chipDurationVal">4s</b></button>
-                <button type="button" class="param-chip" id="chipCount"><i>⧉</i>数量<b id="chipCountVal">1</b></button>
-                <button type="button" class="param-chip" id="chipFormat"><i>▨</i>格式<b id="chipFormatVal">PNG</b></button>
-                <button type="button" class="param-chip" id="chipStrength"><i>◐</i>重绘强度<b id="chipStrengthVal">0.6</b></button>
-                <button type="button" class="param-chip" id="chipAdvanced"><i>⚙</i>高级</button>
-                <button type="button" class="param-chip" id="chipStructured"><i>✎</i>结构化</button>
+                <button type="button" class="param-chip" id="chipMode"><span class="ic" data-icon="layers"></span>类型<b id="chipModeVal">文生视频</b></button>
+                <button type="button" class="param-chip" id="chipSize"><span class="ic" data-icon="crop"></span>画幅<b id="chipSizeVal">默认</b></button>
+                <button type="button" class="param-chip" id="chipDuration"><span class="ic" data-icon="clock"></span>时长<b id="chipDurationVal">4s</b></button>
+                <button type="button" class="param-chip" id="chipCount"><span class="ic" data-icon="copy"></span>数量<b id="chipCountVal">1</b></button>
+                <button type="button" class="param-chip" id="chipFormat"><span class="ic" data-icon="file"></span>格式<b id="chipFormatVal">PNG</b></button>
+                <button type="button" class="param-chip" id="chipStrength"><span class="ic" data-icon="contrast"></span>重绘强度<b id="chipStrengthVal">0.6</b></button>
+                <button type="button" class="param-chip" id="chipAdvanced"><span class="ic" data-icon="sliders"></span>高级</button>
+                <button type="button" class="param-chip" id="chipStructured"><span class="ic" data-icon="pen"></span>结构化</button>
               </div>
 
               <!-- 创作类型 popover -->
               <div class="popover" id="popoverMode" hidden role="menu" aria-label="创作类型">
                 <div class="popover-label">创作类型</div>
-                <button type="button" class="mode-option active" data-mode="t2va"><span class="mo-icon">🎬</span><span class="mo-copy"><strong>文生视频</strong><small>文字生成带声音的视频</small></span><i class="mo-service" data-service="t2va"><b></b></i></button>
-                <button type="button" class="mode-option" data-mode="fl2va"><span class="mo-icon">🖼</span><span class="mo-copy"><strong>关键帧视频</strong><small>首帧 / 尾帧 / 首尾帧</small></span><i class="mo-service" data-service="fl2va"><b></b></i></button>
-                <button type="button" class="mode-option" data-mode="ref2va"><span class="mo-icon">🎞</span><span class="mo-copy"><strong>多参考视频</strong><small>图片、视频、音频联合控制</small></span><i class="mo-service" data-service="ref2va"><b></b></i></button>
-                <button type="button" class="mode-option" data-mode="qwen_image"><span class="mo-icon">✨</span><span class="mo-copy"><strong>Qwen 图像</strong><small>文生图 · 最多四张参考图编辑</small></span><i class="mo-service" data-service="qwen_image"><b></b></i></button>
-                <button type="button" class="mode-option" data-mode="z_image"><span class="mo-icon">🎨</span><span class="mo-copy"><strong>造相 Z-Image</strong><small>未蒸馏版 · 文生图与单图重绘</small></span><i class="mo-service" data-service="z_image"><b></b></i></button>
+                <button type="button" class="mode-option active" data-mode="t2va"><span class="ic mo-icon" data-icon="clapper"></span><span class="mo-copy"><strong>文生视频</strong><small>文字生成带声音的视频</small></span><i class="mo-service" data-service="t2va"><b></b></i></button>
+                <button type="button" class="mode-option" data-mode="fl2va"><span class="ic mo-icon" data-icon="frame"></span><span class="mo-copy"><strong>关键帧视频</strong><small>首帧 / 尾帧 / 首尾帧</small></span><i class="mo-service" data-service="fl2va"><b></b></i></button>
+                <button type="button" class="mode-option" data-mode="ref2va"><span class="ic mo-icon" data-icon="film"></span><span class="mo-copy"><strong>多参考视频</strong><small>图片、视频、音频联合控制</small></span><i class="mo-service" data-service="ref2va"><b></b></i></button>
+                <button type="button" class="mode-option" data-mode="qwen_image"><span class="ic mo-icon" data-icon="sparkle"></span><span class="mo-copy"><strong>Qwen 图像</strong><small>文生图 · 最多四张参考图编辑</small></span><i class="mo-service" data-service="qwen_image"><b></b></i></button>
+                <button type="button" class="mode-option" data-mode="z_image"><span class="ic mo-icon" data-icon="palette"></span><span class="mo-copy"><strong>造相 Z-Image</strong><small>未蒸馏版 · 文生图与单图重绘</small></span><i class="mo-service" data-service="z_image"><b></b></i></button>
               </div>
 
               <!-- 画幅 popover -->
@@ -266,7 +279,7 @@
                 <div class="popover-label">自定义尺寸</div>
                 <div class="custom-size-row">
                   <label>W<input id="customWidth" type="number" min="256" max="4096" step="1" placeholder="2560" /></label>
-                  <button type="button" class="text-button" id="sizeSwapButton" title="交换宽高">⇄</button>
+                  <button type="button" class="text-button" id="sizeSwapButton" title="交换宽高"><span class="ic" data-icon="swap"></span></button>
                   <label>H<input id="customHeight" type="number" min="256" max="4096" step="1" placeholder="1440" /></label>
                   <small>px</small>
                 </div>
@@ -400,6 +413,6 @@
     <script src="/vendor/filepond/filepond-plugin-file-validate-type.min.js?v=1.2.9" defer></script>
     <script src="/vendor/filepond/filepond-plugin-file-validate-size.min.js?v=2.2.8" defer></script>
     <script src="/vendor/bootstrap/bootstrap.bundle.min.js?v=5.3.8" defer></script>
-    <script src="/app.js?v=20261019-chatui" defer></script>
+    <script src="/app.js?v=20261019-batch3c" defer></script>
   </body>
 </html>

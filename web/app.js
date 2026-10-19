@@ -8,8 +8,15 @@ const sidebarCollapse = $("#sidebarCollapse");
 const sidebarExpand = $("#sidebarExpand");
 const newCreationButton = $("#newCreationButton");
 const viewTitle = $("#viewTitle");
+const topbarSearch = $("#topbarSearch");
+const conversationSearch = $("#conversationSearch");
+const queueMiniDot = $("#queueMiniDot");
 const queueRunningCount = $("#queueRunningCount");
 const queueWaitingCount = $("#queueWaitingCount");
+const genPlaceholder = $("#genPlaceholder");
+const genPulse = $("#genPulse");
+const genPercent = $("#genPercent");
+const genText = $("#genText");
 const serviceState = $("#serviceState");
 const userBadge = $("#userBadge");
 const mainContent = $("#mainContent");
@@ -127,6 +134,38 @@ const toast = $("#toast");
 const imagePreviewDialog = $("#imagePreviewDialog");
 const imagePreviewImage = $("#imagePreviewImage");
 
+/* ============ 图标体系（统一线性 SVG） ============ */
+const ICON_ATTRS = 'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+const ICONS = {
+  plus: `<svg ${ICON_ATTRS}><path d="M12 5v14M5 12h14"/></svg>`,
+  chat: `<svg ${ICON_ATTRS}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+  gallery: `<svg ${ICON_ATTRS}><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>`,
+  users: `<svg ${ICON_ATTRS}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  menu: `<svg ${ICON_ATTRS}><path d="M3 6h18M3 12h18M3 18h18"/></svg>`,
+  chevronLeft: `<svg ${ICON_ATTRS}><path d="m15 18-6-6 6-6"/></svg>`,
+  clapper: `<svg ${ICON_ATTRS}><path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1-.3 2.1.3 2.4 1.3z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`,
+  frame: `<svg ${ICON_ATTRS}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>`,
+  film: `<svg ${ICON_ATTRS}><rect x="2" y="2" width="20" height="20" rx="2.2"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/></svg>`,
+  sparkle: `<svg ${ICON_ATTRS}><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg>`,
+  palette: `<svg ${ICON_ATTRS}><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>`,
+  layers: `<svg ${ICON_ATTRS}><path d="m12 2-10 5 10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>`,
+  crop: `<svg ${ICON_ATTRS}><path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/><path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"/></svg>`,
+  clock: `<svg ${ICON_ATTRS}><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`,
+  copy: `<svg ${ICON_ATTRS}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+  file: `<svg ${ICON_ATTRS}><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg>`,
+  contrast: `<svg ${ICON_ATTRS}><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>`,
+  sliders: `<svg ${ICON_ATTRS}><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>`,
+  pen: `<svg ${ICON_ATTRS}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>`,
+  refresh: `<svg ${ICON_ATTRS}><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
+  swap: `<svg ${ICON_ATTRS}><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>`,
+  sun: `<svg ${ICON_ATTRS}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>`,
+  moon: `<svg ${ICON_ATTRS}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+  search: `<svg ${ICON_ATTRS}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`,
+};
+document.querySelectorAll("[data-icon]").forEach((el) => {
+  el.innerHTML = ICONS[el.dataset.icon] || "";
+});
+
 /* ============ 状态 ============ */
 let currentUser = null;
 let currentView = "conversation";
@@ -169,6 +208,13 @@ const taskLabels = {
   z_image_base_text_to_image: "Z-Image 文生图",
   z_image_base_image_to_image: "Z-Image 单图重绘",
 };
+// 面向普通用户的任务类型名（参数摘要用），技术名保留在 tooltip
+const friendlyTask = {
+  t2va: "文生视频", fl2va: "关键帧视频", ref2va: "多参考视频",
+  text_to_image: "文生图", qwen_text_to_image: "Qwen 文生图", qwen_image_edit: "Qwen 参考图编辑",
+  z_image_text_to_image: "造相文生图", z_image_image_to_image: "造相单图重绘",
+  z_image_base_text_to_image: "造相文生图", z_image_base_image_to_image: "造相单图重绘",
+};
 const isVideoMode = (mode) => ["t2va", "fl2va", "ref2va"].includes(mode);
 
 /* ============ 主题 ============ */
@@ -178,9 +224,9 @@ function currentTheme() {
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   try { localStorage.setItem("kaishi_theme", theme); } catch (e) {}
-  const label = theme === "light" ? "☾ 深色" : "☀ 浅色";
+  const label = theme === "light" ? `${ICONS.moon}<span>深色</span>` : `${ICONS.sun}<span>浅色</span>`;
   for (const el of [themeToggle, themeToggleLogin]) {
-    if (el) el.textContent = label;
+    if (el) el.innerHTML = label;
   }
 }
 themeToggle.addEventListener("click", () => applyTheme(currentTheme() === "light" ? "dark" : "light"));
@@ -897,32 +943,44 @@ $("#logoutButton").addEventListener("click", async () => {
 });
 
 /* ============ 侧边栏 ============ */
+const isMobileViewport = () => window.matchMedia("(max-width: 760px)").matches;
+
 function applySidebarRailState() {
+  if (isMobileViewport()) {
+    // 移动端：侧边栏是抽屉，顶栏必须始终显示 ☰ 打开按钮
+    appFrame.classList.remove("rail");
+    sidebarExpand.hidden = false;
+    return;
+  }
   let rail = false;
   try { rail = localStorage.getItem("kaishi_sidebar_rail") === "1"; } catch (e) {}
-  if (rail && !window.matchMedia("(max-width: 760px)").matches) {
-    appFrame.classList.add("rail");
-    sidebarExpand.hidden = false;
-  } else {
-    appFrame.classList.remove("rail");
-    sidebarExpand.hidden = true;
-  }
+  appFrame.classList.toggle("rail", rail);
+  sidebarExpand.hidden = !rail;
 }
+let railResizeTimer = null;
+window.addEventListener("resize", () => {
+  window.clearTimeout(railResizeTimer);
+  railResizeTimer = window.setTimeout(applySidebarRailState, 150);
+});
 sidebarCollapse.addEventListener("click", () => {
   appFrame.classList.add("rail");
   sidebarExpand.hidden = false;
   try { localStorage.setItem("kaishi_sidebar_rail", "1"); } catch (e) {}
 });
 sidebarExpand.addEventListener("click", () => {
-  if (window.matchMedia("(max-width: 760px)").matches) {
-    appFrame.classList.add("mobile-open");
+  if (isMobileViewport()) {
+    appFrame.classList.toggle("mobile-open");
   } else {
     appFrame.classList.remove("rail");
     sidebarExpand.hidden = true;
     try { localStorage.setItem("kaishi_sidebar_rail", "0"); } catch (e) {}
   }
 });
+// 点击内容区或遮罩关闭移动端抽屉
 mainContent.addEventListener("click", () => appFrame.classList.remove("mobile-open"));
+appFrame.addEventListener("click", (event) => {
+  if (isMobileViewport() && event.target === appFrame) appFrame.classList.remove("mobile-open");
+});
 
 newCreationButton.addEventListener("click", newCreation);
 function newCreation() {
@@ -946,6 +1004,8 @@ function setView(view) {
   adminView.hidden = view !== "admin";
   document.querySelectorAll(".sidebar-nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   viewTitle.textContent = view === "conversation" ? "创作" : view === "assets" ? "资产" : "管理";
+  topbarSearch.hidden = view !== "conversation";
+  if (view !== "conversation") conversationSearch.value = "";
   appFrame.classList.remove("mobile-open");
   if (view === "assets" && allJobs.length) renderAssets();
   if (view === "admin" && currentUser?.role === "admin") loadUsers();
@@ -957,16 +1017,46 @@ function formatTime(timestamp) {
   return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(timestamp * 1000));
 }
 
+function relativeTime(timestamp) {
+  const diff = Math.max(0, Date.now() / 1000 - timestamp);
+  if (diff < 60) return "刚刚";
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
+  if (diff < 172800) return "昨天";
+  if (diff < 7 * 86400) return `${Math.floor(diff / 86400)} 天前`;
+  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(new Date(timestamp * 1000));
+}
+
+// 侧边栏友好标题：结构化拼装文本取 [镜头N] 后的中文内容
+function jobTitle(job) {
+  const raw = job.prompt || job.id;
+  if (raw.includes("integrated_multimodal_description:")) {
+    const m = raw.match(/integrated_multimodal_description:\s*([^\n]+)/);
+    const content = (m ? m[1] : raw).replace(/^\[镜头\d+\]\s*/, "").trim();
+    return content.slice(0, 20) + (content.length > 20 ? "…" : "");
+  }
+  return raw.length > 40 ? raw.slice(0, 40) + "…" : raw;
+}
+
+let searchQuery = "";
+conversationSearch.addEventListener("input", () => {
+  searchQuery = conversationSearch.value.trim().toLowerCase();
+  renderSidebarJobs();
+});
+
 function renderSidebarJobs() {
   sidebarJobs.replaceChildren();
-  if (!allJobs.length) {
+  const list = searchQuery
+    ? allJobs.filter((job) => (job.prompt || "").toLowerCase().includes(searchQuery) || jobTitle(job).toLowerCase().includes(searchQuery))
+    : allJobs;
+  if (!list.length) {
     const empty = document.createElement("div");
     empty.className = "sidebar-jobs-empty";
-    empty.textContent = "暂无对话记录\n你的创作会出现在这里";
+    empty.textContent = searchQuery ? "没有匹配的对话记录" : "暂无对话记录\n你的创作会出现在这里";
     sidebarJobs.append(empty);
     return;
   }
-  allJobs.forEach((job) => {
+  list.forEach((job) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.dataset.jobId = job.id;
@@ -980,19 +1070,19 @@ function renderSidebarJobs() {
       img.loading = "lazy";
       thumb.append(img);
     } else {
-      thumb.textContent = job.result_type === "image" ? "🖼" : "🎬";
+      thumb.innerHTML = job.result_type === "image" ? ICONS.frame : ICONS.clapper;
     }
     const copy = document.createElement("span");
     copy.className = "sj-copy";
     const strong = document.createElement("strong");
-    strong.textContent = job.prompt || job.id;
+    strong.textContent = jobTitle(job);
     const small = document.createElement("small");
     const dot = document.createElement("i");
     dot.className = `sj-dot ${job.status || ""}`;
-    small.append(dot, document.createTextNode(`${taskLabels[job.task_type] || job.task_type || "任务"} · ${formatTime(job.created_at)}`));
+    small.append(dot, document.createTextNode(`${friendlyTask[job.task_type] || taskLabels[job.task_type] || job.task_type || "任务"} · ${relativeTime(job.created_at)}`));
     copy.append(strong, small);
     btn.append(thumb, copy);
-    btn.title = job.prompt || job.id;
+    btn.title = `${job.prompt || job.id}\n${formatTime(job.created_at)}`;
     btn.addEventListener("click", () => {
       setView("conversation");
       openConversation(job);
@@ -1033,11 +1123,58 @@ function renderRuntime(runtime) {
   runtimeEvents.append(phase);
   (runtime.events || []).slice(-5).forEach((entry) => {
     const item = document.createElement("div");
-    item.className = `runtime-event ${entry.type || ""}`;
+    // "progress" 会与 Bootstrap 的 .progress 组件样式冲突，改用别名
+    const safeType = entry.type === "progress" ? "progress-step" : (entry.type || "");
+    item.className = `runtime-event ${safeType}`;
     item.textContent = entry.message;
     runtimeEvents.append(item);
   });
   runtimeEvents.hidden = false;
+}
+
+// 结构化提示词按官方三字段渲染为中文标签行；普通提示词原样展示
+function renderPromptBlock(job) {
+  conversationPrompt.replaceChildren();
+  const raw = job.prompt || "";
+  if (!raw) return;
+  if (!raw.includes("integrated_multimodal_description:")) {
+    conversationPrompt.textContent = raw;
+    return;
+  }
+  const keyLabels = {
+    integrated_multimodal_description: "画面与动作",
+    overall_soundscape: "环境声音",
+    non_diegetic_music: "背景音乐",
+  };
+  const sections = raw.split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean);
+  let started = false;
+  sections.forEach((section) => {
+    let labelName = null;
+    let keyName = "";
+    let value = section;
+    for (const [key, name] of Object.entries(keyLabels)) {
+      if (section.startsWith(key + ":")) {
+        labelName = name;
+        keyName = key;
+        value = section.slice(key.length + 1).trim();
+        break;
+      }
+    }
+    if (!labelName && !started) labelName = "关键帧对齐";
+    started = true;
+    if (!value || value === "N/A") return;
+    const row = document.createElement("div");
+    row.className = "prompt-field-row";
+    const lab = document.createElement("span");
+    lab.className = "pf-label";
+    lab.textContent = labelName;
+    if (keyName) lab.title = keyName;
+    const val = document.createElement("span");
+    val.className = "pf-value";
+    val.textContent = value;
+    row.append(lab, val);
+    conversationPrompt.append(row);
+  });
 }
 
 function renderConversation(job, runtime = null) {
@@ -1049,6 +1186,7 @@ function renderConversation(job, runtime = null) {
   const showProgress = !TERMINAL_STATUSES.includes(job.status);
   progressTrack.hidden = !showProgress;
   progressBar.style.width = `${Math.min(progress, 100)}%`;
+  progressBar.classList.toggle("flowing", job.status === "in_progress");
   const outputName = job.result_type === "image" ? "图片" : "视频";
   const messages = {
     queued: `任务正在队列等待${job.queue_position ? ` · 前方 ${job.queue_position - 1} 个任务` : ""}`,
@@ -1066,12 +1204,13 @@ function renderConversation(job, runtime = null) {
     jobElapsed.hidden = true;
   }
   // 提示词与参数摘要
-  conversationPrompt.textContent = job.prompt || "";
+  renderPromptBlock(job);
   const p = submittedParams.get(job.id) || {};
   conversationParams.replaceChildren();
-  const mkParam = (text, bold = false) => {
+  const mkParam = (text, bold = false, title = "") => {
     const span = document.createElement("span");
     span.className = "conv-param";
+    if (title) span.title = title;
     if (bold) {
       const b = document.createElement("b");
       b.textContent = text;
@@ -1081,13 +1220,36 @@ function renderConversation(job, runtime = null) {
     }
     return span;
   };
-  conversationParams.append(mkParam(taskLabels[job.task_type] || job.task_type || "任务", true));
+  conversationParams.append(mkParam(friendlyTask[job.task_type] || job.task_type || "任务", true, taskLabels[job.task_type] || ""));
   if (p.size) conversationParams.append(mkParam(String(p.size)));
   if (p.seconds) conversationParams.append(mkParam(`${p.seconds}s`));
   if (p.count) conversationParams.append(mkParam(`${p.count} 个`));
   if (job.result_type === "image" && p.format) conversationParams.append(mkParam(String(p.format).toUpperCase()));
   if (job.model && job.model !== "MiniMaxH3") conversationParams.append(mkParam(String(job.model), true));
   conversationParams.hidden = false;
+  // 视频任务生成中：画幅占位块
+  const videoActive = job.result_type === "video" && ["queued", "submitting", "in_progress"].includes(job.status);
+  genPlaceholder.hidden = !videoActive;
+  if (videoActive) {
+    const size = p.size || job.size || "";
+    const [w, h] = String(size).toLowerCase().split("x").map(Number);
+    genPlaceholder.style.aspectRatio = w && h ? `${w} / ${h}` : "16 / 9";
+    if (job.status === "in_progress") {
+      genPulse.hidden = true;
+      const gp = runtime?.generation_progress ?? null;
+      genPercent.hidden = gp == null;
+      genPercent.textContent = gp != null ? `${gp}%` : "";
+      genText.textContent = runtime?.step != null && runtime.total_steps
+        ? `扩散生成 ${runtime.step}/${runtime.total_steps}`
+        : "模型正在生成";
+    } else {
+      genPulse.hidden = false;
+      genPercent.hidden = true;
+      genText.textContent = job.status === "queued"
+        ? `排队等待${job.queue_position ? ` · 第 ${job.queue_position} 位` : ""}`
+        : "正在提交到模型服务";
+    }
+  }
   renderRuntime(runtime);
   // 结果
   imageGallery.replaceChildren();
@@ -1836,12 +1998,16 @@ async function checkHealth() {
   try {
     const health = await parseResponse(await fetch("/api/health", { cache: "no-store" }));
     renderModeServices(health.services);
+    queueMiniDot.className = `qm-dot ${health.ok ? "on" : "off"}`;
+    queueMiniDot.title = health.ok ? "推理服务在线" : "推理服务不可用";
     queueRunningCount.textContent = String(health.running ?? "—");
     queueWaitingCount.textContent = String(health.queued ?? "—");
     serviceState.className = `service-state mini ${health.ok ? "online" : "offline"}`;
     serviceState.querySelector(".service-state-text").textContent = health.ok ? "推理服务在线" : "推理服务不可用";
   } catch {
     renderModeServices({});
+    queueMiniDot.className = "qm-dot off";
+    queueMiniDot.title = "网关服务不可用";
     queueRunningCount.textContent = "—";
     queueWaitingCount.textContent = "—";
     serviceState.className = "service-state mini offline";
